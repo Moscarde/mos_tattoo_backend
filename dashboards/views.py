@@ -59,24 +59,18 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             return DashboardInstanceListSerializer
         return DashboardInstanceSerializer
 
-    def _execute_datasources(self, schema, unidade):
+    def _execute_datasources(self, schema, dashboard_instance):
         """
         Processa o schema e executa todas as queries de datasources.
 
         Args:
             schema: Schema do template (dict com blocks, etc)
-            unidade: Instância de Unidade para filtrar os dados
+            dashboard_instance: Instância do dashboard com o filtro SQL
 
         Returns:
             dict: Mapeamento {datasource_nome: dados}
         """
         datasources_data = {}
-
-        # Parâmetros que serão injetados em todas as queries
-        params = {
-            "unidade_id": str(unidade.id),
-            "unidade_codigo": unidade.codigo,
-        }
 
         # Procura por dataSource nos blocos
         blocks = schema.get("blocks", [])
@@ -92,7 +86,16 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         for datasource_name in datasource_names:
             try:
                 datasource = DataSource.objects.get(nome=datasource_name, ativo=True)
-                success, result = datasource.execute_query(params=params)
+
+                # Aplica o filtro SQL da instância
+                sql_modificado = self._aplicar_filtro_sql(
+                    datasource.sql, dashboard_instance.filtro_sql
+                )
+
+                # Executa a query modificada
+                success, result = self._executar_query_customizada(
+                    datasource.connection, sql_modificado
+                )
 
                 if success:
                     datasources_data[datasource_name] = result
@@ -114,6 +117,89 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
         return datasources_data
 
+    def _aplicar_filtro_sql(self, sql_original, filtro_sql):
+        """
+        Aplica o filtro SQL customizado à query original.
+
+        Remove o ponto-e-vírgula final e adiciona WHERE + filtro.
+        Se já houver WHERE na query, usa AND para concatenar.
+
+        Args:
+            sql_original: Query SQL original
+            filtro_sql: Filtro SQL da instância (ex: "id = 1")
+
+        Returns:
+            str: SQL modificado
+        """
+        # Remove ponto-e-vírgula final
+        sql = sql_original.strip()
+        if sql.endswith(";"):
+            sql = sql[:-1]
+
+        # Se não houver filtro, retorna o SQL original
+        if not filtro_sql or not filtro_sql.strip():
+            return sql + ";"
+
+        # Verifica se já existe WHERE na query (case-insensitive)
+        sql_lower = sql.lower()
+        has_where = " where " in sql_lower
+
+        # Adiciona o filtro apropriadamente
+        if has_where:
+            # Se já tem WHERE, usa AND
+            sql_modificado = f"{sql} AND ({filtro_sql.strip()});"
+        else:
+            # Se não tem WHERE, adiciona WHERE
+            sql_modificado = f"{sql} WHERE {filtro_sql.strip()};"
+
+        return sql_modificado
+
+    def _executar_query_customizada(self, connection, sql):
+        """
+        Executa uma query SQL customizada.
+
+        Args:
+            connection: Objeto Connection
+            sql: Query SQL a ser executada
+
+        Returns:
+            tuple: (sucesso: bool, dados: list|str)
+        """
+        import psycopg2
+        import psycopg2.extras
+
+        if not connection or not connection.ativo:
+            return False, "Connection inativa ou não configurada"
+
+        try:
+            conn = psycopg2.connect(
+                host=connection.host,
+                port=connection.porta,
+                database=connection.database,
+                user=connection.usuario,
+                password=connection.senha,
+                connect_timeout=10,
+            )
+
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute(sql)
+            results = cursor.fetchall()
+
+            # Converte RealDictRow para dict comum
+            data = [dict(row) for row in results]
+
+            cursor.close()
+            conn.close()
+
+            return True, data
+
+        except psycopg2.OperationalError as e:
+            return False, f"Erro de conexão: {str(e)}"
+        except psycopg2.ProgrammingError as e:
+            return False, f"Erro na query SQL: {str(e)}"
+        except Exception as e:
+            return False, f"Erro ao executar query: {str(e)}"
+
     @action(detail=True, methods=["get"])
     def data(self, request, pk=None):
         """
@@ -122,7 +208,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         Endpoint: /api/dashboards/{id}/data/
 
         Executa as queries definidas no schema do template e retorna os dados.
-        Os parâmetros unidade_id e unidade_codigo são injetados automaticamente.
+        O filtro SQL configurado na instância é aplicado automaticamente às queries.
         """
         dashboard = self.get_object()
 
@@ -142,7 +228,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Processa o schema e executa as datasources
         schema = dashboard.template.schema
-        datasources_data = self._execute_datasources(schema, dashboard.unidade)
+        datasources_data = self._execute_datasources(schema, dashboard)
 
         return Response(
             {
@@ -153,6 +239,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     "nome": dashboard.unidade.nome,
                     "codigo": dashboard.unidade.codigo,
                 },
+                "filtro_sql": dashboard.filtro_sql,
                 "schema": schema,
                 "data": datasources_data,
             }

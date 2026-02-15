@@ -34,7 +34,15 @@ class DashboardInstanceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DashboardInstance
-        fields = ["id", "template", "unidade", "ativo", "criado_em", "atualizado_em"]
+        fields = [
+            "id",
+            "template",
+            "unidade",
+            "filtro_sql",
+            "ativo",
+            "criado_em",
+            "atualizado_em",
+        ]
         read_only_fields = ["id", "criado_em", "atualizado_em"]
 
 
@@ -44,10 +52,28 @@ class DashboardInstanceListSerializer(serializers.ModelSerializer):
     template_nome = serializers.CharField(source="template.nome", read_only=True)
     unidade_nome = serializers.CharField(source="unidade.nome", read_only=True)
     unidade_codigo = serializers.CharField(source="unidade.codigo", read_only=True)
+    filtro_sql_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = DashboardInstance
-        fields = ["id", "template_nome", "unidade_nome", "unidade_codigo", "ativo"]
+        fields = [
+            "id",
+            "template_nome",
+            "unidade_nome",
+            "unidade_codigo",
+            "filtro_sql_preview",
+            "ativo",
+        ]
+
+    def get_filtro_sql_preview(self, obj):
+        """Retorna preview do filtro SQL (primeiros 50 chars)."""
+        if obj.filtro_sql:
+            return (
+                obj.filtro_sql[:50] + "..."
+                if len(obj.filtro_sql) > 50
+                else obj.filtro_sql
+            )
+        return None
 
 
 class DataSourceSerializer(serializers.ModelSerializer):

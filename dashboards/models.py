@@ -65,6 +65,11 @@ class DashboardInstance(models.Model):
         related_name="dashboards",
         verbose_name="Unidade",
     )
+    filtro_sql = models.TextField(
+        blank=True,
+        verbose_name="Filtro SQL",
+        help_text="Cláusula WHERE customizada (ex: unidade_codigo = 'SP-01' OR status = 'ativo')",
+    )
     usuarios_com_acesso = models.ManyToManyField(
         User,
         related_name="dashboards_acessiveis",
