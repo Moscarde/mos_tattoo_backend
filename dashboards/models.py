@@ -4,6 +4,7 @@ Models para o app dashboards.
 Este módulo define os modelos relacionados a dashboards:
 - DashboardTemplate: templates globais de dashboards
 - DashboardInstance: instâncias de dashboards por unidade
+- Connection: conexões a bancos de dados externos
 - DataSource: fontes de dados (queries SQL) para os dashboards
 """
 
@@ -84,11 +85,96 @@ class DashboardInstance(models.Model):
         return f"{self.template.nome} - {self.unidade.codigo}"
 
 
+class Connection(models.Model):
+    """
+    Conexão a um banco de dados externo (PostgreSQL).
+
+    Armazena as credenciais e informações necessárias para
+    conectar a bancos de dados externos para consultas.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nome = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Nome",
+        help_text="Nome identificador da conexão",
+    )
+    descricao = models.TextField(blank=True, verbose_name="Descrição")
+    host = models.CharField(
+        max_length=255,
+        verbose_name="Host",
+        help_text="Endereço do servidor (ex: localhost, 192.168.1.10)",
+    )
+    porta = models.IntegerField(
+        default=5432,
+        verbose_name="Porta",
+        help_text="Porta do PostgreSQL (padrão: 5432)",
+    )
+    database = models.CharField(
+        max_length=100,
+        verbose_name="Database",
+        help_text="Nome do banco de dados",
+    )
+    usuario = models.CharField(
+        max_length=100,
+        verbose_name="Usuário",
+        help_text="Usuário para autenticação",
+    )
+    senha = models.CharField(
+        max_length=255,
+        verbose_name="Senha",
+        help_text="Senha do usuário (armazenada de forma segura)",
+    )
+    ativo = models.BooleanField(default=True, verbose_name="Ativo")
+    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    class Meta:
+        verbose_name = "Conexão"
+        verbose_name_plural = "Conexões"
+        ordering = ["nome"]
+
+    def __str__(self):
+        return f"{self.nome} ({self.host}:{self.porta}/{self.database})"
+
+    def get_connection_string(self):
+        """
+        Retorna a string de conexão PostgreSQL.
+        """
+        return (
+            f"postgresql://{self.usuario}:{self.senha}@"
+            f"{self.host}:{self.porta}/{self.database}"
+        )
+
+    def test_connection(self):
+        """
+        Testa a conexão com o banco de dados.
+
+        Returns:
+            tuple: (sucesso: bool, mensagem: str)
+        """
+        import psycopg2
+
+        try:
+            conn = psycopg2.connect(
+                host=self.host,
+                port=self.porta,
+                database=self.database,
+                user=self.usuario,
+                password=self.senha,
+            )
+            conn.close()
+            return True, "Conexão estabelecida com sucesso!"
+        except Exception as e:
+            return False, f"Erro ao conectar: {str(e)}"
+
+
 class DataSource(models.Model):
     """
     Fonte de dados (query SQL) para alimentar dashboards.
 
-    Armazena queries SQL que são executadas para buscar dados.
+    Armazena queries SQL que são executadas para buscar dados de uma conexão específica.
     IMPORTANTE: Apenas SELECT é permitido por questões de segurança.
     """
 
@@ -100,6 +186,15 @@ class DataSource(models.Model):
         help_text="Nome único para identificar a fonte de dados",
     )
     descricao = models.TextField(blank=True, verbose_name="Descrição")
+    connection = models.ForeignKey(
+        Connection,
+        on_delete=models.PROTECT,
+        related_name="datasources",
+        verbose_name="Conexão",
+        help_text="Conexão ao banco de dados onde a query será executada",
+        null=True,  # Temporário para a migração
+        blank=True,
+    )
     sql = models.TextField(
         verbose_name="Query SQL",
         help_text="Query SQL (apenas SELECT). Use %(param)s para parâmetros.",
@@ -157,3 +252,52 @@ class DataSource(models.Model):
         """Override save para executar validação."""
         self.clean()
         super().save(*args, **kwargs)
+
+    def execute_query(self, params=None):
+        """
+        Executa a query SQL usando a conexão configurada.
+
+        Args:
+            params (dict): Parâmetros para a query (opcional)
+
+        Returns:
+            tuple: (sucesso: bool, dados: list|str)
+                   Se sucesso, dados é uma lista de dicionários.
+                   Se erro, dados é a mensagem de erro.
+        """
+        import psycopg2
+        import psycopg2.extras
+
+        if not self.ativo or not self.connection.ativo:
+            return False, "DataSource ou Connection está inativo"
+
+        try:
+            conn = psycopg2.connect(
+                host=self.connection.host,
+                port=self.connection.porta,
+                database=self.connection.database,
+                user=self.connection.usuario,
+                password=self.connection.senha,
+            )
+
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Executa a query com parâmetros se fornecidos
+            if params:
+                cursor.execute(self.sql, params)
+            else:
+                cursor.execute(self.sql)
+
+            # Busca todos os resultados
+            results = cursor.fetchall()
+
+            # Converte RealDictRow para dict comum
+            data = [dict(row) for row in results]
+
+            cursor.close()
+            conn.close()
+
+            return True, data
+
+        except Exception as e:
+            return False, f"Erro ao executar query: {str(e)}"
