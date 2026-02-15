@@ -53,12 +53,16 @@ class DashboardInstanceListSerializer(serializers.ModelSerializer):
 class DataSourceSerializer(serializers.ModelSerializer):
     """Serializer para DataSource."""
 
+    connection_nome = serializers.CharField(source="connection.nome", read_only=True)
+
     class Meta:
         model = DataSource
         fields = [
             "id",
             "nome",
             "descricao",
+            "connection",
+            "connection_nome",
             "sql",
             "ativo",
             "criado_em",

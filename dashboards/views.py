@@ -59,6 +59,61 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             return DashboardInstanceListSerializer
         return DashboardInstanceSerializer
 
+    def _execute_datasources(self, schema, unidade):
+        """
+        Processa o schema e executa todas as queries de datasources.
+
+        Args:
+            schema: Schema do template (dict com blocks, etc)
+            unidade: Instância de Unidade para filtrar os dados
+
+        Returns:
+            dict: Mapeamento {datasource_nome: dados}
+        """
+        datasources_data = {}
+
+        # Parâmetros que serão injetados em todas as queries
+        params = {
+            "unidade_id": str(unidade.id),
+            "unidade_codigo": unidade.codigo,
+        }
+
+        # Procura por dataSource nos blocos
+        blocks = schema.get("blocks", [])
+        datasource_names = set()
+
+        for block in blocks:
+            if isinstance(block, dict):
+                datasource_name = block.get("dataSource")
+                if datasource_name:
+                    datasource_names.add(datasource_name)
+
+        # Executa cada datasource encontrado
+        for datasource_name in datasource_names:
+            try:
+                datasource = DataSource.objects.get(nome=datasource_name, ativo=True)
+                success, result = datasource.execute_query(params=params)
+
+                if success:
+                    datasources_data[datasource_name] = result
+                else:
+                    datasources_data[datasource_name] = {
+                        "error": result,
+                        "success": False,
+                    }
+            except DataSource.DoesNotExist:
+                datasources_data[datasource_name] = {
+                    "error": f"DataSource '{datasource_name}' não encontrado",
+                    "success": False,
+                }
+            except Exception as e:
+                datasources_data[datasource_name] = {
+                    "error": str(e),
+                    "success": False,
+                }
+
+        return datasources_data
+
     @action(detail=True, methods=["get"])
     def data(self, request, pk=None):
         """
@@ -67,6 +122,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         Endpoint: /api/dashboards/{id}/data/
 
         Executa as queries definidas no schema do template e retorna os dados.
+        Os parâmetros unidade_id e unidade_codigo são injetados automaticamente.
         """
         dashboard = self.get_object()
 
@@ -84,11 +140,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Retorna o schema do template com dados
+        # Processa o schema e executa as datasources
         schema = dashboard.template.schema
-
-        # TODO: Processar schema e executar queries de DataSource
-        # Por enquanto, retorna apenas o schema
+        datasources_data = self._execute_datasources(schema, dashboard.unidade)
 
         return Response(
             {
@@ -100,7 +154,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     "codigo": dashboard.unidade.codigo,
                 },
                 "schema": schema,
-                "data": {},  # Aqui virão os dados das queries
+                "data": datasources_data,
             }
         )
 
