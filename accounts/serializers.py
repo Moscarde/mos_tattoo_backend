@@ -1,10 +1,12 @@
 """
 Serializers para o app accounts.
 """
-from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Profile
+from rest_framework import serializers
+
 from core.serializers import UnidadeSerializer
+
+from .models import Profile
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -26,5 +28,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'role', 'role_display', 
             'unidades', 'ativo', 'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = ['id', 'criado_em', 'atualizado_em']
         ]
         read_only_fields = ['id', 'criado_em', 'atualizado_em']
