@@ -157,17 +157,40 @@ class Connection(models.Model):
         import psycopg2
 
         try:
+            # Tenta conectar com timeout de 5 segundos
             conn = psycopg2.connect(
                 host=self.host,
                 port=self.porta,
                 database=self.database,
                 user=self.usuario,
                 password=self.senha,
+                connect_timeout=5,
             )
+
+            # Testa uma query simples
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
             conn.close()
+
             return True, "Conexão estabelecida com sucesso!"
+        except psycopg2.OperationalError as e:
+            error_msg = str(e)
+            hint = ""
+
+            # Dá dicas baseadas no erro
+            if "Connection refused" in error_msg:
+                hint = " | DICA: Se estiver rodando no Docker, use 'host.docker.internal' ou '172.17.0.1' em vez de 'localhost'"
+            elif "timeout" in error_msg.lower():
+                hint = " | DICA: Verifique se o firewall está bloqueando a porta ou se o servidor está acessível"
+            elif "password authentication failed" in error_msg:
+                hint = " | DICA: Verifique o usuário e senha"
+            elif "database" in error_msg and "does not exist" in error_msg:
+                hint = " | DICA: Verifique se o nome do banco está correto"
+
+            return False, f"Erro ao conectar: {error_msg}{hint}"
         except Exception as e:
-            return False, f"Erro ao conectar: {str(e)}"
+            return False, f"Erro inesperado: {str(e)}"
 
 
 class DataSource(models.Model):
@@ -278,6 +301,7 @@ class DataSource(models.Model):
                 database=self.connection.database,
                 user=self.connection.usuario,
                 password=self.connection.senha,
+                connect_timeout=10,
             )
 
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -299,5 +323,9 @@ class DataSource(models.Model):
 
             return True, data
 
+        except psycopg2.OperationalError as e:
+            return False, f"Erro de conexão: {str(e)}"
+        except psycopg2.ProgrammingError as e:
+            return False, f"Erro na query SQL: {str(e)}"
         except Exception as e:
             return False, f"Erro ao executar query: {str(e)}"
