@@ -584,7 +584,7 @@ class DashboardBlock(models.Model):
     def clean(self):
         """
         Valida a configuração do bloco.
-        
+
         Nota: Os campos x_axis_field e y_axis_fields são opcionais para permitir
         criar blocos no inline e configurá-los depois na página de detalhe.
         """
@@ -602,7 +602,11 @@ class DashboardBlock(models.Model):
 
         # Valida y_axis_fields APENAS se estiver preenchido (não vazio)
         # Permite salvar com lista vazia para configurar depois
-        if hasattr(self, 'y_axis_fields') and self.y_axis_fields is not None and len(self.y_axis_fields) > 0:
+        if (
+            hasattr(self, "y_axis_fields")
+            and self.y_axis_fields is not None
+            and len(self.y_axis_fields) > 0
+        ):
             if not isinstance(self.y_axis_fields, list):
                 errors["y_axis_fields"] = "Deve ser uma lista"
             else:
@@ -699,10 +703,10 @@ class DashboardBlock(models.Model):
     def _normalize_data_single_series(self, query_result):
         """
         Normalização para gráficos de série única (comportamento original).
-        
+
         Args:
             query_result: Lista de dicionários retornados pela query
-            
+
         Returns:
             dict: Dados normalizados
         """
@@ -734,15 +738,15 @@ class DashboardBlock(models.Model):
     def _normalize_data_with_series(self, query_result):
         """
         Normalização para gráficos com múltiplas séries/legendas.
-        
+
         Agrupa os dados pelo campo series_field, gerando uma série distinta
         para cada valor único encontrado. Alinha os valores pelo eixo X,
         preenchendo com null quando uma série não possuir dados para um
         determinado valor de X.
-        
+
         Args:
             query_result: Lista de dicionários retornados pela query
-            
+
         Returns:
             dict: Dados normalizados com múltiplas séries
         """
@@ -752,7 +756,7 @@ class DashboardBlock(models.Model):
         x_values_set = set()
         for row in query_result:
             x_values_set.add(row.get(self.x_axis_field))
-        
+
         x_values = sorted(list(x_values_set))
         x_value_to_index = {val: idx for idx, val in enumerate(x_values)}
 
@@ -760,12 +764,12 @@ class DashboardBlock(models.Model):
         series_values_set = set()
         for row in query_result:
             series_values_set.add(row.get(self.series_field))
-        
+
         series_values = sorted(list(series_values_set))
 
         # 3. Para cada métrica do eixo Y, cria uma série para cada valor de series_field
         all_series = []
-        
+
         for metric in self.y_axis_fields:
             field = metric.get("field")
             base_label = metric.get("label", field)
@@ -773,12 +777,12 @@ class DashboardBlock(models.Model):
 
             # Agrupa os dados por series_field
             data_by_series = defaultdict(lambda: defaultdict(lambda: None))
-            
+
             for row in query_result:
                 x_val = row.get(self.x_axis_field)
                 series_val = row.get(self.series_field)
                 y_val = row.get(field)
-                
+
                 # Armazena o valor na estrutura agrupada
                 data_by_series[series_val][x_val] = y_val
 
@@ -803,7 +807,9 @@ class DashboardBlock(models.Model):
                         "axis": axis,
                         "label": series_label,
                         "values": values,
-                        "series_value": str(series_val),  # Valor original da série para referência
+                        "series_value": str(
+                            series_val
+                        ),  # Valor original da série para referência
                     }
                 )
 

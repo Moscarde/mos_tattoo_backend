@@ -81,12 +81,14 @@ class DashboardBlockInline(admin.TabularInline):
     ]
     readonly_fields = ["edit_config"]
     ordering = ["order", "title"]
-    
+
     # Não inclui x_axis_field e y_axis_fields no inline
     # Eles devem ser configurados na página de edição detalhada do bloco
     exclude = []
     verbose_name = "Bloco de Dashboard"
-    verbose_name_plural = "Blocos (Configure os eixos X/Y clicando em 'Editar Eixos' após salvar)"
+    verbose_name_plural = (
+        "Blocos (Configure os eixos X/Y clicando em 'Editar Eixos' após salvar)"
+    )
 
     def edit_config(self, obj):
         """Link para editar configurações detalhadas."""
@@ -103,10 +105,10 @@ class DashboardBlockInline(admin.TabularInline):
 @admin.register(TemplateComponent)
 class TemplateComponentAdmin(admin.ModelAdmin):
     """Admin para o modelo TemplateComponent - LEGADO.
-    
+
     ⚠️ SISTEMA LEGADO - Não use para novos dashboards!
     Este modelo está mantido apenas para compatibilidade com dashboards antigos.
-    
+
     Para novos dashboards, use: DashboardBlock (Dashboard > Blocos de Dashboard)
     """
 
@@ -168,13 +170,13 @@ class TemplateComponentAdmin(admin.ModelAdmin):
         return "-"
 
     preview_config.short_description = "Preview das Configurações"
-    
+
     def legacy_warning(self, obj):
         """Aviso de que é sistema legado."""
         return format_html(
             '<span style="color: #dc3545; font-weight: bold;">⚠️ LEGADO</span>'
         )
-    
+
     legacy_warning.short_description = "Status"
 
 
@@ -226,7 +228,12 @@ class DashboardBlockAdmin(admin.ModelAdmin):
         (
             "Configuração de Eixos",
             {
-                "fields": ("x_axis_field", "series_field", "y_axis_fields", "preview_y_axis_fields"),
+                "fields": (
+                    "x_axis_field",
+                    "series_field",
+                    "y_axis_fields",
+                    "preview_y_axis_fields",
+                ),
                 "description": """
                 <strong>Eixo X:</strong> Campo da query que representa o eixo X (ex: "data", "produto").<br>
                 <strong>Campo de Série/Legenda (Opcional):</strong> Campo que define múltiplas séries/legendas (ex: "nome_unidade", "produto").<br>
@@ -445,45 +452,46 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
         """Mostra informações sobre qual sistema usar."""
         num_blocks = obj.blocks.filter(ativo=True).count()
         num_legacy = obj.componentes.filter(ativo=True).count()
-        
+
         if num_blocks > 0 and num_legacy > 0:
             return format_html(
                 '<div style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107;">'
-                '<strong>⚠️ Template Misto</strong><br>'
-                'Este template tem <strong>{} blocos novos</strong> e <strong>{} componentes legados</strong>.<br>'
-                'Recomendação: <strong>Use apenas Blocos</strong> (nova arquitetura) ou migre os componentes legados.'
-                '</div>',
-                num_blocks, num_legacy
+                "<strong>⚠️ Template Misto</strong><br>"
+                "Este template tem <strong>{} blocos novos</strong> e <strong>{} componentes legados</strong>.<br>"
+                "Recomendação: <strong>Use apenas Blocos</strong> (nova arquitetura) ou migre os componentes legados."
+                "</div>",
+                num_blocks,
+                num_legacy,
             )
         elif num_legacy > 0:
             return format_html(
                 '<div style="padding: 10px; background: #f8d7da; border-left: 4px solid #dc3545;">'
-                '<strong>🔴 Dashboard Legado</strong><br>'
-                'Este template usa <strong>{} componentes legados</strong>.<br>'
-                'Endpoint: <code>/api/dashboards/{{id}}/data/</code><br>'
-                'Recomendação: <strong>Migre para Blocos</strong> (nova arquitetura).'
-                '</div>',
-                num_legacy
+                "<strong>🔴 Dashboard Legado</strong><br>"
+                "Este template usa <strong>{} componentes legados</strong>.<br>"
+                "Endpoint: <code>/api/dashboards/{{id}}/data/</code><br>"
+                "Recomendação: <strong>Migre para Blocos</strong> (nova arquitetura)."
+                "</div>",
+                num_legacy,
             )
         elif num_blocks > 0:
             return format_html(
                 '<div style="padding: 10px; background: #d4edda; border-left: 4px solid #28a745;">'
-                '<strong>✅ Arquitetura Refatorada</strong><br>'
-                'Este template usa <strong>{} blocos</strong> da arquitetura refatorada.<br>'
-                'Endpoint: <code>/api/dashboards/{{id}}/data/</code><br>'
-                'Dados normalizados e frontend desacoplado.'
-                '</div>',
-                num_blocks
+                "<strong>✅ Arquitetura Refatorada</strong><br>"
+                "Este template usa <strong>{} blocos</strong> da arquitetura refatorada.<br>"
+                "Endpoint: <code>/api/dashboards/{{id}}/data/</code><br>"
+                "Dados normalizados e frontend desacoplado."
+                "</div>",
+                num_blocks,
             )
         else:
             return format_html(
                 '<div style="padding: 10px; background: #e7f3ff; border-left: 4px solid #007bff;">'
-                '<strong>📝 Template Vazio</strong><br>'
-                'Adicione blocos abaixo para configurar o dashboard.<br>'
+                "<strong>📝 Template Vazio</strong><br>"
+                "Adicione blocos abaixo para configurar o dashboard.<br>"
                 '<strong>Use a seção "Blocos"</strong> (arquitetura refatorada).'
-                '</div>'
+                "</div>"
             )
-    
+
     architecture_info.short_description = "Sistema Usado"
 
     def num_blocks(self, obj):
@@ -546,16 +554,20 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
 
         try:
             # Busca blocos do template (arquitetura refatorada)
-            blocks = DashboardBlock.objects.filter(
-                template=obj, ativo=True
-            ).select_related("datasource", "datasource__connection").order_by("order")
+            blocks = (
+                DashboardBlock.objects.filter(template=obj, ativo=True)
+                .select_related("datasource", "datasource__connection")
+                .order_by("order")
+            )
 
             # Se não tem blocos, tenta componentes legados
             if not blocks.exists():
                 componentes = TemplateComponent.objects.filter(
                     template=obj, ativo=True
-                ).select_related("datasource", "component_type", "datasource__connection")
-                
+                ).select_related(
+                    "datasource", "component_type", "datasource__connection"
+                )
+
                 if not componentes.exists():
                     return format_html(
                         '<div style="padding: 15px; background: #fff3cd; border-radius: 5px;">'
@@ -563,9 +575,11 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                         "Adicione blocos usando a seção acima."
                         "</div>"
                     )
-                
+
                 # Usa componentes legados
-                return self._preview_legacy_components(componentes, obj, json_serializer)
+                return self._preview_legacy_components(
+                    componentes, obj, json_serializer
+                )
 
             # Formata os resultados dos blocos
             html_parts = []
@@ -574,9 +588,7 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
             )
 
             # Informações gerais
-            html_parts.append(
-                '<h3 style="margin-top: 0;">📊 Preview dos Blocos</h3>'
-            )
+            html_parts.append('<h3 style="margin-top: 0;">📊 Preview dos Blocos</h3>')
             html_parts.append(f"<p><strong>Template:</strong> {obj.nome}</p>")
             html_parts.append(
                 f"<p><strong>Total de Blocos:</strong> {blocks.count()}</p>"
@@ -597,7 +609,7 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                 html_parts.append(
                     f"<p><strong>Eixo X:</strong> <code>{block.x_axis_field or '(não configurado)'}</code></p>"
                 )
-                
+
                 if block.y_axis_fields:
                     y_axis_str = json.dumps(block.y_axis_fields, ensure_ascii=False)
                     html_parts.append(
@@ -615,35 +627,52 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                         )
 
                         # Valida campos apenas se estiverem configurados
-                        if block.x_axis_field and block.y_axis_fields and len(block.y_axis_fields) > 0 and num_records > 0:
-                            is_valid, errors = block.validate_fields_against_query(result)
+                        if (
+                            block.x_axis_field
+                            and block.y_axis_fields
+                            and len(block.y_axis_fields) > 0
+                            and num_records > 0
+                        ):
+                            is_valid, errors = block.validate_fields_against_query(
+                                result
+                            )
                             if is_valid:
                                 html_parts.append(
                                     '<p style="color: green;">✓ Campos validados com sucesso</p>'
                                 )
-                                
+
                                 # Mostra dados normalizados
                                 try:
                                     normalized = block.normalize_data(result)
                                     normalized_preview = {
-                                        "x": normalized["x"][:3] if len(normalized["x"]) > 0 else [],
+                                        "x": (
+                                            normalized["x"][:3]
+                                            if len(normalized["x"]) > 0
+                                            else []
+                                        ),
                                         "series": [
                                             {
                                                 **s,
-                                                "values": s["values"][:3] if len(s["values"]) > 0 else []
+                                                "values": (
+                                                    s["values"][:3]
+                                                    if len(s["values"]) > 0
+                                                    else []
+                                                ),
                                             }
                                             for s in normalized["series"]
-                                        ]
+                                        ],
                                     }
-                                    
+
                                     formatted_json = json.dumps(
                                         normalized_preview,
                                         indent=2,
                                         ensure_ascii=False,
                                         default=json_serializer,
                                     )
-                                    formatted_json = formatted_json.replace("{", "{{").replace("}", "}}")
-                                    
+                                    formatted_json = formatted_json.replace(
+                                        "{", "{{"
+                                    ).replace("}", "}}")
+
                                     html_parts.append("<details open>")
                                     html_parts.append(
                                         '<summary style="cursor: pointer; font-weight: bold; margin: 10px 0;">📄 Dados Normalizados (primeiros 3):</summary>'
@@ -652,7 +681,7 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                                         f'<pre style="background: white; padding: 10px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 300px;">{formatted_json}</pre>'
                                     )
                                     html_parts.append("</details>")
-                                    
+
                                     if num_records > 3:
                                         html_parts.append(
                                             f'<p style="color: #666; font-size: 12px;">... e mais {num_records - 3} registro(s)</p>'
@@ -665,7 +694,9 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                                 html_parts.append(
                                     '<div style="color: red; background: #ffebee; padding: 10px; border-radius: 3px; margin: 10px 0;">'
                                 )
-                                html_parts.append("<strong>❌ Erros de validação:</strong><ul>")
+                                html_parts.append(
+                                    "<strong>❌ Erros de validação:</strong><ul>"
+                                )
                                 for error in errors:
                                     html_parts.append(f"<li>{error}</li>")
                                 html_parts.append("</ul></div>")
@@ -681,7 +712,9 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                                 ensure_ascii=False,
                                 default=json_serializer,
                             )
-                            formatted_json = formatted_json.replace("{", "{{").replace("}", "}}")
+                            formatted_json = formatted_json.replace("{", "{{").replace(
+                                "}", "}}"
+                            )
                             html_parts.append("<details>")
                             html_parts.append(
                                 '<summary style="cursor: pointer; font-weight: bold; margin: 10px 0;">📄 Dados Brutos (primeiros 3):</summary>'
@@ -719,29 +752,33 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                 "</div>",
                 traceback.format_exc(),
             )
-    
+
     def _preview_legacy_components(self, componentes, obj, json_serializer):
         """Preview para componentes legados."""
         import json
-        
+
         html_parts = []
         html_parts.append(
             '<div style="font-family: monospace; background: #f5f5f5; padding: 15px; border-radius: 5px;">'
         )
-        html_parts.append('<h3 style="margin-top: 0;">🔴 Preview dos Componentes LEGADOS</h3>')
+        html_parts.append(
+            '<h3 style="margin-top: 0;">🔴 Preview dos Componentes LEGADOS</h3>'
+        )
         html_parts.append(f"<p><strong>Template:</strong> {obj.nome}</p>")
         html_parts.append(f"<p><strong>Total:</strong> {componentes.count()}</p>")
         html_parts.append(
             '<p style="color: #dc3545;">⚠️ Este template usa sistema LEGADO. Recomenda-se migrar para Blocos.</p>'
         )
         html_parts.append("<hr>")
-        
+
         for componente in componentes:
             html_parts.append(
                 f"<h4>📁 {componente.nome} ({componente.component_type.nome})</h4>"
             )
-            html_parts.append(f"<p><strong>DataSource:</strong> {componente.datasource.nome}</p>")
-            
+            html_parts.append(
+                f"<p><strong>DataSource:</strong> {componente.datasource.nome}</p>"
+            )
+
             try:
                 success, result = componente.datasource.execute_query(params=None)
                 if success:
@@ -752,11 +789,18 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                     if num_records > 0:
                         preview_data = result[:3]
                         formatted_json = json.dumps(
-                            preview_data, indent=2, ensure_ascii=False, default=json_serializer
+                            preview_data,
+                            indent=2,
+                            ensure_ascii=False,
+                            default=json_serializer,
                         )
-                        formatted_json = formatted_json.replace("{", "{{").replace("}", "}}")
+                        formatted_json = formatted_json.replace("{", "{{").replace(
+                            "}", "}}"
+                        )
                         html_parts.append("<details>")
-                        html_parts.append('<summary style="cursor: pointer;">📄 Dados (3 primeiros)</summary>')
+                        html_parts.append(
+                            '<summary style="cursor: pointer;">📄 Dados (3 primeiros)</summary>'
+                        )
                         html_parts.append(
                             f'<pre style="background: white; padding: 10px; border: 1px solid #ddd; overflow: auto; max-height: 200px;">{formatted_json}</pre>'
                         )
@@ -765,9 +809,9 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                     html_parts.append(f'<p style="color: red;">❌ Erro: {result}</p>')
             except Exception as e:
                 html_parts.append(f'<p style="color: red;">❌ Erro: {str(e)}</p>')
-            
+
             html_parts.append("<hr>")
-        
+
         html_parts.append("</div>")
         return format_html("".join(html_parts))
 
