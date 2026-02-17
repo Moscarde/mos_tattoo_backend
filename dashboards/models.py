@@ -85,15 +85,76 @@ class DashboardTemplate(models.Model):
     def __str__(self):
         return self.nome
 
-    def get_filter_metadata(self, instance_filter_sql=None):
+    def _build_dynamic_where_clauses(self, applied_filters, exclude_field=None):
+        """
+        Constrói cláusulas WHERE baseado em filtros aplicados.
+
+        Args:
+            applied_filters: Dict de filtros {field: {operator: value}}
+            exclude_field: Campo a ser excluído (para evitar filtro circular)
+
+        Returns:
+            tuple: (where_clauses: list, params: dict)
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        where_clauses = []
+        params = {}
+
+        if not applied_filters:
+            logger.debug("Nenhum filtro aplicado")
+            return where_clauses, params
+
+        logger.info(
+            f"Construindo WHERE com applied_filters={applied_filters}, exclude_field={exclude_field}"
+        )
+
+        for field, conditions in applied_filters.items():
+            # Pula o campo sendo calculado (evita circular filter)
+            if field == exclude_field:
+                logger.debug(f"Pulando campo {field} (exclude_field)")
+                continue
+
+            for operator, value in conditions.items():
+                param_name = f"filter_{field}_{operator}"
+
+                if operator == "gte":
+                    where_clauses.append(f"{field} >= %({param_name})s")
+                    params[param_name] = value
+                elif operator == "lte":
+                    where_clauses.append(f"{field} <= %({param_name})s")
+                    params[param_name] = value
+                elif operator == "gt":
+                    where_clauses.append(f"{field} > %({param_name})s")
+                    params[param_name] = value
+                elif operator == "lt":
+                    where_clauses.append(f"{field} < %({param_name})s")
+                    params[param_name] = value
+                elif operator == "eq":
+                    where_clauses.append(f"{field} = %({param_name})s")
+                    params[param_name] = value
+                elif operator == "in" and isinstance(value, list) and len(value) > 0:
+                    where_clauses.append(f"{field} = ANY(%({param_name})s)")
+                    params[param_name] = value
+
+        logger.info(f"WHERE construído: {where_clauses} com params: {params}")
+        return where_clauses, params
+
+    def get_filter_metadata(self, instance_filter_sql=None, applied_filters=None):
         """
         Gera metadados dos campos filtráveis configurados no template.
 
         Para filtros temporais: retorna min e max dates
         Para filtros categóricos: retorna lista de valores distintos
 
+        FILTROS INTERDEPENDENTES: Ao calcular metadados de um campo, aplica
+        os outros filtros já selecionados (exceto o próprio campo).
+
         Args:
             instance_filter_sql: SQL WHERE adicional da instância (opcional)
+            applied_filters: Filtros já aplicados pelo usuário {field: {op: value}}
 
         Returns:
             dict: Metadados estruturados dos filtros
@@ -140,13 +201,27 @@ class DashboardTemplate(models.Model):
                     FROM ({datasource.sql}) AS base_data
                 """
 
-                # Adiciona filtro de instância se existir
-                if instance_filter_sql:
-                    min_max_query = (
-                        min_max_query.rstrip() + f"\n    WHERE {instance_filter_sql}"
-                    )
+                # Constrói WHERE clauses (instance + filtros interdependentes)
+                all_where_clauses = []
+                query_params = {}
 
-                logger.info(f"Executando query temporal: {min_max_query}")
+                # Filtro de instância
+                if instance_filter_sql:
+                    all_where_clauses.append(f"({instance_filter_sql})")
+
+                # Filtros dinâmicos (exceto o próprio campo temporal)
+                dynamic_where, dynamic_params = self._build_dynamic_where_clauses(
+                    applied_filters, exclude_field=field
+                )
+                all_where_clauses.extend(dynamic_where)
+                query_params.update(dynamic_params)
+
+                if all_where_clauses:
+                    min_max_query += "\n    WHERE " + " AND ".join(all_where_clauses)
+
+                logger.info(
+                    f"Executando query temporal: {min_max_query} com params: {query_params}"
+                )
 
                 # Executa usando psycopg2 diretamente
                 conn = psycopg2.connect(
@@ -159,7 +234,7 @@ class DashboardTemplate(models.Model):
                 )
 
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cursor.execute(min_max_query)
+                cursor.execute(min_max_query, query_params)
                 result = cursor.fetchall()
                 cursor.close()
                 conn.close()
@@ -204,15 +279,33 @@ class DashboardTemplate(models.Model):
                     WHERE {field} IS NOT NULL
                 """
 
-                # Adiciona filtro de instância se existir
+                # Constrói WHERE clauses adicionais (instance + filtros interdependentes)
+                additional_where = []
+                query_params = {}
+
+                # Filtro de instância
                 if instance_filter_sql:
+                    additional_where.append(f"({instance_filter_sql})")
+
+                # Filtros dinâmicos (exceto o próprio campo categórico sendo calculado)
+                dynamic_where, dynamic_params = self._build_dynamic_where_clauses(
+                    applied_filters, exclude_field=field
+                )
+                additional_where.extend(dynamic_where)
+                query_params.update(dynamic_params)
+
+                if additional_where:
                     distinct_query = (
-                        distinct_query.rstrip() + f"\n      AND {instance_filter_sql}"
+                        distinct_query.rstrip()
+                        + "\n      AND "
+                        + " AND ".join(additional_where)
                     )
 
                 distinct_query += f"\n    ORDER BY {field}\n    LIMIT {limit}"
 
-                logger.info(f"Executando query categórica: {distinct_query}")
+                logger.info(
+                    f"Executando query categórica: {distinct_query} com params: {query_params}"
+                )
 
                 # Executa usando psycopg2 diretamente
                 conn = psycopg2.connect(
@@ -225,7 +318,7 @@ class DashboardTemplate(models.Model):
                 )
 
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cursor.execute(distinct_query)
+                cursor.execute(distinct_query, query_params)
                 result = cursor.fetchall()
                 cursor.close()
                 conn.close()

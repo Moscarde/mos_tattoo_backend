@@ -369,7 +369,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         # Processa cada bloco
         blocks_data = []
         for block in blocks:
-            block_data = self._process_dashboard_block(block, dashboard, applied_filters)
+            block_data = self._process_dashboard_block(
+                block, dashboard, applied_filters
+            )
             blocks_data.append(block_data)
 
         # Monta schema de grid (padrão 12 colunas)
@@ -377,9 +379,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         if "grid" not in schema:
             schema["grid"] = {"columns": 12}
 
-        # Obtém metadados de filtros disponíveis
+        # Obtém metadados de filtros disponíveis (com filtros interdependentes)
         filter_metadata = dashboard.template.get_filter_metadata(
-            instance_filter_sql=dashboard.filtro_sql
+            instance_filter_sql=dashboard.filtro_sql, applied_filters=applied_filters
         )
 
         # Monta resposta final
@@ -413,6 +415,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         - Temporal: ?field__gte=2024-01-01&field__lte=2024-12-31
         - Categórico: ?field__in=1,2,3
 
+        IMPORTANTE: O frontend deve enviar TODOS os filtros ativos em cada requisição.
+        Filtros não enviados são considerados "removidos" (API stateless).
+
         Args:
             request: Request object
             template: DashboardTemplate instance
@@ -420,20 +425,42 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         Returns:
             dict: Filtros parseados {field: {operator: value}}
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         if not template.filterable_fields:
             return {}
 
         filters = {}
         allowed_fields = set()
+        categorical_fields = {}
 
         # Coleta campos permitidos
         if template.filterable_fields.get("temporal"):
             allowed_fields.add(template.filterable_fields["temporal"]["field"])
 
         for cat in template.filterable_fields.get("categorical", []):
-            allowed_fields.add(cat["field"])
+            field_name = cat["field"]
+            allowed_fields.add(field_name)
+            categorical_fields[field_name] = cat
+
+        # Obtém metadata das colunas para type casting
+        # Pega primeiro datasource do template como referência
+        datasource = (
+            DashboardBlock.objects.filter(template=template)
+            .select_related("datasource")
+            .first()
+        )
+
+        columns_metadata = {}
+        if datasource and datasource.datasource.columns_metadata:
+            for col in datasource.datasource.columns_metadata:
+                columns_metadata[col["name"]] = col
 
         # Parse query params
+        logger.info(f"Query params recebidos: {dict(request.query_params)}")
+
         for param, value in request.query_params.items():
             # Ignora params que não são filtros
             if "__" not in param:
@@ -447,6 +474,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Valida se campo é permitido
             if field not in allowed_fields:
+                logger.warning(
+                    f"Campo '{field}' não está em filterable_fields configurados"
+                )
                 continue
 
             # Parse valor baseado no operador
@@ -457,13 +487,42 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                 filters[field][operator] = value
 
             elif operator == "in":
-                # Categórico (lista)
+                # Categórico (lista) - precisa de type casting
                 if field not in filters:
                     filters[field] = {}
-                # Converte string "1,2,3" em lista
-                values = [v.strip() for v in value.split(",") if v.strip()]
-                filters[field]["in"] = values
 
+                # Converte string "1,2,3" em lista
+                raw_values = [v.strip() for v in value.split(",") if v.strip()]
+
+                # Type casting baseado no metadata
+                col_meta = columns_metadata.get(field, {})
+                db_type = col_meta.get("database_type", "").lower()
+
+                typed_values = []
+                for v in raw_values:
+                    try:
+                        # Se é numérico (int, bigint, etc)
+                        if "int" in db_type:
+                            typed_values.append(int(v))
+                        # Se é float/decimal
+                        elif any(
+                            t in db_type
+                            for t in ["float", "double", "decimal", "numeric"]
+                        ):
+                            typed_values.append(float(v))
+                        # Se é boolean
+                        elif "bool" in db_type:
+                            typed_values.append(v.lower() in ["true", "1", "yes"])
+                        # Caso contrário, mantém como string
+                        else:
+                            typed_values.append(v)
+                    except (ValueError, TypeError):
+                        # Se falhar conversão, mantém como string
+                        typed_values.append(v)
+
+                filters[field]["in"] = typed_values
+
+        logger.info(f"Filtros parseados: {filters}")
         return filters
 
     def _process_dashboard_block(self, block, dashboard_instance, applied_filters=None):
