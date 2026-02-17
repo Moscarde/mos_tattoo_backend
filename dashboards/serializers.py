@@ -154,7 +154,9 @@ class DashboardBlockSerializer(serializers.ModelSerializer):
             "chart_type",
             "chart_type_display",
             "x_axis_field",
-            "y_axis_fields",
+            "x_axis_granularity",
+            "series_field",
+            "y_axis_aggregations",
             "col_span",
             "row_span",
             "datasource_nome",
@@ -221,4 +223,10 @@ class DashboardInstanceDataSerializer(serializers.Serializer):
     blocks = DashboardBlockDataSerializer(
         many=True,
         help_text="Lista de blocos com dados normalizados",
+    )
+
+    filters = serializers.DictField(
+        required=False,
+        allow_null=True,
+        help_text="Metadados de filtros disponíveis e aplicados",
     )

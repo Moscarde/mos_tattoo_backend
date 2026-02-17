@@ -1,0 +1,261 @@
+{% extends "admin/base_site.html" %} {% load i18n static %} {% block extrastyle %} {{ block.super }}
+<style>
+	.test-container {
+		max-width: 1400px;
+		margin: 20px auto;
+		padding: 20px;
+	}
+
+	.section {
+		background: white;
+		border-radius: 8px;
+		padding: 20px;
+		margin-bottom: 20px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	}
+
+	.section-title {
+		font-size: 18px;
+		font-weight: bold;
+		margin-bottom: 15px;
+		padding-bottom: 10px;
+		border-bottom: 2px solid #417690;
+		color: #417690;
+	}
+
+	.query-box {
+		background: #f5f5f5;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		padding: 15px;
+		font-family: "Monaco", "Menlo", "Consolas", monospace;
+		font-size: 13px;
+		line-height: 1.6;
+		overflow-x: auto;
+		white-space: pre;
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 10px;
+	}
+
+	.data-table th {
+		background: #417690;
+		color: white;
+		padding: 12px;
+		text-align: left;
+		font-weight: 600;
+	}
+
+	.data-table td {
+		padding: 10px 12px;
+		border-bottom: 1px solid #ddd;
+	}
+
+	.data-table tr:nth-child(even) {
+		background: #f9f9f9;
+	}
+
+	.data-table tr:hover {
+		background: #e9f5ff;
+	}
+
+	.success-box {
+		background: #d4edda;
+		border-left: 4px solid #28a745;
+		padding: 15px;
+		border-radius: 4px;
+		margin-bottom: 20px;
+	}
+
+	.error-box {
+		background: #f8d7da;
+		border-left: 4px solid #dc3545;
+		padding: 15px;
+		border-radius: 4px;
+		margin-bottom: 20px;
+	}
+
+	.info-box {
+		background: #d1ecf1;
+		border-left: 4px solid #0c5460;
+		padding: 15px;
+		border-radius: 4px;
+		margin-bottom: 20px;
+	}
+
+	.button-group {
+		margin-top: 20px;
+	}
+
+	.button {
+		display: inline-block;
+		padding: 10px 20px;
+		margin-right: 10px;
+		background: #417690;
+		color: white;
+		text-decoration: none;
+		border-radius: 4px;
+		font-weight: 500;
+	}
+
+	.button:hover {
+		background: #2e5468;
+		color: white;
+	}
+
+	.metadata {
+		display: grid;
+		grid-template-columns: 200px 1fr;
+		gap: 10px;
+		margin-top: 15px;
+	}
+
+	.metadata dt {
+		font-weight: 600;
+		color: #666;
+	}
+
+	.metadata dd {
+		margin: 0;
+		color: #333;
+	}
+
+	.badge {
+		display: inline-block;
+		padding: 4px 8px;
+		border-radius: 3px;
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.badge-success {
+		background: #28a745;
+		color: white;
+	}
+
+	.badge-null {
+		background: #6c757d;
+		color: white;
+	}
+</style>
+{% endblock %} {% block breadcrumbs %}
+<div class="breadcrumbs">
+	<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+	&rsaquo; <a href="{% url 'admin:dashboards_datasource_changelist' %}">Fontes de Dados</a> &rsaquo; <a href="{% url 'admin:dashboards_datasource_change' datasource.pk %}">{{ datasource.nome }}</a>
+	&rsaquo; Teste de Query Normalizada
+</div>
+{% endblock %} {% block content %}
+<div class="test-container">
+	<h1 style="margin-bottom: 20px">🧪 Teste de Query Normalizada</h1>
+
+	<!-- Informações do DataSource -->
+	<div class="section">
+		<div class="section-title">📋 Informações do DataSource</div>
+		<dl class="metadata">
+			<dt>Nome:</dt>
+			<dd><strong>{{ datasource.nome }}</strong></dd>
+
+			<dt>Conexão:</dt>
+			<dd>{{ datasource.connection.nome }}</dd>
+
+			<dt>Contrato Validado:</dt>
+			<dd>
+				{% if datasource.contract_validated %}
+				<span class="badge badge-success">✅ Sim</span>
+				{% else %}
+				<span class="badge">❌ Não</span>
+				{% endif %}
+			</dd>
+		</dl>
+
+		<div style="margin-top: 20px">
+			<strong>Mapeamento Semântico:</strong>
+			<ul style="margin-top: 10px; line-height: 1.8">
+				<li><code>metric_date</code> ← <strong>{{ datasource.metric_date_column }}</strong></li>
+				<li><code>metric_value</code> ← <strong>{{ datasource.metric_value_column }}</strong></li>
+				<li
+					><code>series_key</code> ← {% if datasource.series_key_column %}
+					<strong>{{ datasource.series_key_column }}</strong>
+					{% else %}
+					<span class="badge badge-null">NULL</span>
+					{% endif %}
+				</li>
+				<li
+					><code>unit_id</code> ← {% if datasource.unit_id_column %}
+					<strong>{{ datasource.unit_id_column }}</strong>
+					{% else %}
+					<span class="badge badge-null">NULL</span>
+					{% endif %}
+				</li>
+			</ul>
+		</div>
+	</div>
+
+	<!-- Query Normalizada -->
+	<div class="section">
+		<div class="section-title">🔍 Query Normalizada Gerada</div>
+		<div class="info-box"> <strong>ℹ️ Informação:</strong> Esta é a query SQL gerada automaticamente com aliases padronizados. Os filtros de data, série e unidade são aplicados diretamente no SQL. </div>
+		<div class="query-box">{{ normalized_query }}</div>
+	</div>
+
+	<!-- Resultados -->
+	<div class="section">
+		<div class="section-title">📊 Resultados da Execução</div>
+
+		{% if success %}
+		<div class="success-box">
+			<strong>✅ Query executada com sucesso!</strong><br />
+			{{ data|length }} registro(s) retornado(s)
+		</div>
+
+		{% if data %}
+		<div style="overflow-x: auto">
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th>#</th>
+						<th>metric_date</th>
+						<th>metric_value</th>
+						<th>series_key</th>
+						<th>unit_id</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for row in data %}
+					<tr>
+						<td>{{ forloop.counter }}</td>
+						<td>{{ row.metric_date|default:"-" }}</td>
+						<td>{{ row.metric_value|default:"-" }}</td>
+						<td>{{ row.series_key|default:"-" }}</td>
+						<td>{{ row.unit_id|default:"-" }}</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+
+		{% if data|length >= 100 %}
+		<div class="info-box" style="margin-top: 20px"> <strong>ℹ️ Nota:</strong> Mostrando primeiros 100 registros. Use filtros de data/série para limitar os resultados. </div>
+		{% endif %} {% else %}
+		<div class="info-box">
+			<strong>ℹ️ Nenhum registro retornado.</strong><br />
+			A query foi executada com sucesso, mas não retornou dados. Verifique os filtros aplicados.
+		</div>
+		{% endif %} {% else %}
+		<div class="error-box">
+			<strong>❌ Erro ao executar query:</strong><br />
+			<code>{{ error }}</code>
+		</div>
+		{% endif %}
+	</div>
+
+	<!-- Ações -->
+	<div class="button-group">
+		<a href="{% url 'admin:dashboards_datasource_change' datasource.pk %}" class="button"> ← Voltar para Edição </a>
+		<a href="{% url 'admin:dashboards_datasource_changelist' %}" class="button" style="background: #6c757d"> 📋 Lista de DataSources </a>
+	</div>
+</div>
+{% endblock %}

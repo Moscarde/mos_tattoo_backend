@@ -4,9 +4,11 @@ Views para o app dashboards.
 
 from django.db import connection
 from rest_framework import status, viewsets
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import DashboardBlock, DashboardInstance, DashboardTemplate, DataSource
 from .serializers import (
@@ -361,16 +363,24 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             .order_by("order")
         )
 
+        # Parse filtros aplicados via query params
+        applied_filters = self._parse_applied_filters(request, dashboard.template)
+
         # Processa cada bloco
         blocks_data = []
         for block in blocks:
-            block_data = self._process_dashboard_block(block, dashboard)
+            block_data = self._process_dashboard_block(block, dashboard, applied_filters)
             blocks_data.append(block_data)
 
         # Monta schema de grid (padrão 12 colunas)
         schema = dashboard.template.schema or {}
         if "grid" not in schema:
             schema["grid"] = {"columns": 12}
+
+        # Obtém metadados de filtros disponíveis
+        filter_metadata = dashboard.template.get_filter_metadata(
+            instance_filter_sql=dashboard.filtro_sql
+        )
 
         # Monta resposta final
         response_data = {
@@ -383,6 +393,10 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             },
             "schema": schema,
             "blocks": blocks_data,
+            "filters": {
+                "available": filter_metadata,
+                "applied": applied_filters,
+            },
         }
 
         # Valida com serializer (garante formato correto)
@@ -391,27 +405,82 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(serializer.validated_data)
 
-    def _process_dashboard_block(self, block, dashboard_instance):
+    def _parse_applied_filters(self, request, template):
         """
-        Processa um DashboardBlock: executa query, normaliza dados.
+        Parse query params para extrair filtros aplicados.
+
+        Suporta:
+        - Temporal: ?field__gte=2024-01-01&field__lte=2024-12-31
+        - Categórico: ?field__in=1,2,3
+
+        Args:
+            request: Request object
+            template: DashboardTemplate instance
+
+        Returns:
+            dict: Filtros parseados {field: {operator: value}}
+        """
+        if not template.filterable_fields:
+            return {}
+
+        filters = {}
+        allowed_fields = set()
+
+        # Coleta campos permitidos
+        if template.filterable_fields.get("temporal"):
+            allowed_fields.add(template.filterable_fields["temporal"]["field"])
+
+        for cat in template.filterable_fields.get("categorical", []):
+            allowed_fields.add(cat["field"])
+
+        # Parse query params
+        for param, value in request.query_params.items():
+            # Ignora params que não são filtros
+            if "__" not in param:
+                continue
+
+            parts = param.split("__")
+            if len(parts) != 2:
+                continue
+
+            field, operator = parts
+
+            # Valida se campo é permitido
+            if field not in allowed_fields:
+                continue
+
+            # Parse valor baseado no operador
+            if operator in ["gte", "lte", "gt", "lt", "eq"]:
+                # Temporal ou numérico
+                if field not in filters:
+                    filters[field] = {}
+                filters[field][operator] = value
+
+            elif operator == "in":
+                # Categórico (lista)
+                if field not in filters:
+                    filters[field] = {}
+                # Converte string "1,2,3" em lista
+                values = [v.strip() for v in value.split(",") if v.strip()]
+                filters[field]["in"] = values
+
+        return filters
+
+    def _process_dashboard_block(self, block, dashboard_instance, applied_filters=None):
+        """
+        Processa um DashboardBlock: executa query usando Semantic Layer.
 
         Args:
             block: Instância de DashboardBlock
             dashboard_instance: Instância de DashboardInstance (para filtro SQL)
+            applied_filters: Dict de filtros aplicados via query params
 
         Returns:
-            dict: Dados do bloco normalizados
+            dict: Dados do bloco formatados para o frontend
         """
         try:
-            # 1. Aplica filtro SQL da instância
-            sql_modificado = self._aplicar_filtro_sql(
-                block.datasource.sql, dashboard_instance.filtro_sql
-            )
-
-            # 2. Executa query
-            success, result = self._executar_query_customizada(
-                block.datasource.connection, sql_modificado
-            )
+            # Executa query usando Semantic Layer com filtros
+            success, result = block.get_data(applied_filters=applied_filters)
 
             if not success:
                 return {
@@ -424,22 +493,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     "success": False,
                 }
 
-            # 3. Normaliza os dados
-            try:
-                normalized_data = block.normalize_data(result)
-            except ValueError as e:
-                # Erro de validação de campos
-                return {
-                    "id": str(block.id),
-                    "title": block.title,
-                    "chart": {"type": block.chart_type},
-                    "layout": {"colSpan": block.col_span, "rowSpan": block.row_span},
-                    "data": None,
-                    "error": str(e),
-                    "success": False,
-                }
-
-            # 4. Retorna bloco normalizado
+            # Retorna bloco com dados
             return {
                 "id": str(block.id),
                 "title": block.title,
@@ -448,7 +502,7 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     **block.config,  # Merge com configurações extras
                 },
                 "layout": {"colSpan": block.col_span, "rowSpan": block.row_span},
-                "data": normalized_data,
+                "data": result,
                 "success": True,
             }
 
@@ -472,6 +526,8 @@ class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
     Apenas admin técnico pode acessar.
     """
 
+    # Permite autenticação via JWT (API) ou Session (Django Admin)
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = DataSourceSerializer
     queryset = DataSource.objects.filter(ativo=True)
@@ -533,6 +589,288 @@ class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
                         ],  # Retorna apenas 10 primeiros registros no teste
                     }
                 )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=["post"])
+    def execute_analytical(self, request, pk=None):
+        """
+        Executa query analítica usando a Semantic Layer (QueryBuilder).
+
+        Endpoint: /api/datasources/{id}/execute_analytical/
+
+        Body exemplo:
+        {
+            "fields": ["produto", "categoria"],
+            "aggregations": [
+                {
+                    "field": "valor_venda",
+                    "aggregation": "sum",
+                    "alias": "total_vendas"
+                },
+                {
+                    "field": "valor_venda",
+                    "aggregation": "avg",
+                    "alias": "ticket_medio"
+                }
+            ],
+            "granularity": {
+                "field": "data_venda",
+                "level": "month"
+            },
+            "filters": {
+                "where_clause": "categoria = 'Eletrônicos'"
+            },
+            "group_by": ["produto"],
+            "order_by": ["total_vendas DESC"],
+            "limit": 100
+        }
+
+        Returns:
+            {
+                "success": true,
+                "row_count": 50,
+                "columns": ["produto", "mes", "total_vendas", "ticket_medio"],
+                "data": [
+                    {
+                        "produto": "Notebook",
+                        "mes": "2024-01",
+                        "total_vendas": 50000,
+                        "ticket_medio": 2500
+                    },
+                    ...
+                ]
+            }
+        """
+        datasource = self.get_object()
+
+        # Apenas admin técnico pode executar queries analíticas
+        try:
+            profile = request.user.profile
+            if not profile.is_admin_tecnico():
+                return Response(
+                    {
+                        "error": "Apenas administradores técnicos podem executar queries analíticas."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except:
+            return Response(
+                {"error": "Perfil de usuário não encontrado."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Valida se DataSource tem columns_metadata (semantic layer)
+        if not datasource.columns_metadata:
+            return Response(
+                {
+                    "success": False,
+                    "error": "Este DataSource não possui metadata semântica. Re-salve o DataSource para extrair metadata.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Extrai parâmetros da requisição
+        fields = request.data.get("fields", [])
+        aggregations = request.data.get("aggregations", [])
+        granularity = request.data.get("granularity")
+        filters = request.data.get("filters", {})
+        group_by = request.data.get("group_by", [])
+        order_by = request.data.get("order_by", [])
+        limit = request.data.get("limit", 1000)
+
+        try:
+            # Executa query analítica
+            results = datasource.execute_analytical_query(
+                fields=fields,
+                aggregations=aggregations,
+                granularity=granularity,
+                filters=filters,
+                group_by=group_by,
+                order_by=order_by,
+                limit=limit,
+            )
+
+            # Extrai colunas da primeira linha
+            columns = list(results[0].keys()) if results else []
+
+            return Response(
+                {
+                    "success": True,
+                    "row_count": len(results),
+                    "columns": columns,
+                    "data": results,
+                }
+            )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=["get"])
+    def metadata(self, request, pk=None):
+        """
+        Retorna os metadados (colunas) da fonte de dados.
+
+        Endpoint: /api/datasources/{id}/metadata/
+
+        Returns:
+            {
+                "success": true,
+                "columns": [
+                    {
+                        "name": "data_venda",
+                        "semantic_type": "datetime",
+                        "data_type": "timestamp",
+                        "pg_type": "timestamp without time zone"
+                    },
+                    {
+                        "name": "valor_venda",
+                        "semantic_type": "measure",
+                        "data_type": "numeric",
+                        "pg_type": "numeric"
+                    },
+                    {
+                        "name": "produto",
+                        "semantic_type": "dimension",
+                        "data_type": "text",
+                        "pg_type": "character varying"
+                    }
+                ]
+            }
+        """
+        # Busca o DataSource diretamente sem restrições de get_queryset
+        # para permitir acesso no Django Admin
+        try:
+            datasource = DataSource.objects.get(pk=pk, ativo=True)
+        except DataSource.DoesNotExist:
+            return Response(
+                {"success": False, "error": "DataSource não encontrado", "columns": []},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not datasource.columns_metadata:
+            return Response(
+                {
+                    "success": False,
+                    "error": "Este DataSource não possui metadata semântica. Re-salve o DataSource para extrair metadata.",
+                    "columns": [],
+                },
+                status=status.HTTP_200_OK,  # Retorna 200 mesmo sem metadata
+            )
+
+        # columns_metadata já é uma lista de dicionários com estrutura:
+        # [{"name": "col1", "semantic_type": "datetime", "database_type": "timestamp", ...}, ...]
+        columns = []
+        for col_info in datasource.columns_metadata:
+            columns.append(
+                {
+                    "name": col_info.get("name", ""),
+                    "semantic_type": col_info.get("semantic_type", "dimension"),
+                    "data_type": col_info.get(
+                        "semantic_type", "unknown"
+                    ),  # Usa semantic_type como data_type
+                    "pg_type": col_info.get("database_type", "unknown"),
+                }
+            )
+
+        # Ordena colunas: datetime primeiro, depois measure, depois dimension
+        type_order = {"datetime": 0, "measure": 1, "dimension": 2}
+        columns.sort(key=lambda x: (type_order.get(x["semantic_type"], 3), x["name"]))
+
+        return Response(
+            {
+                "success": True,
+                "columns": columns,
+            }
+        )
+
+
+class DashboardBlockViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet para DashboardBlock.
+
+    Permite executar queries e obter dados para blocos de dashboard.
+    """
+
+    # Permite autenticação via JWT (API) ou Session (Django Admin)
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+    queryset = DashboardBlock.objects.filter(ativo=True)
+
+    def get_queryset(self):
+        """Filtra blocos baseado nas permissões do usuário."""
+        user = self.request.user
+        try:
+            profile = user.profile
+            if profile.is_admin_tecnico():
+                return self.queryset
+        except:
+            pass
+
+        return DashboardBlock.objects.none()
+
+    @action(detail=True, methods=["get"])
+    def data(self, request, pk=None):
+        """
+        Obtém os dados do bloco executando sua query via Semantic Layer.
+
+        Endpoint: /api/dashboard-blocks/{id}/data/
+
+        Returns:
+            {
+                "success": true,
+                "data": {
+                    "x": ["2024-01", "2024-02", "2024-03"],
+                    "series": [
+                        {
+                            "axis": "y1",
+                            "label": "Total de Vendas",
+                            "values": [50000, 60000, 55000]
+                        },
+                        {
+                            "axis": "y2",
+                            "label": "Ticket Médio",
+                            "values": [2500, 2800, 2600]
+                        }
+                    ]
+                }
+            }
+        """
+        block = self.get_object()
+
+        # Valida se bloco está configurado
+        if not block.x_axis_field:
+            return Response(
+                {
+                    "success": False,
+                    "error": "Bloco não está configurado (x_axis_field não definido).",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Valida se tem métricas configuradas
+        if not block.y_axis_aggregations:
+            return Response(
+                {
+                    "success": False,
+                    "error": "Bloco não possui métricas configuradas (y_axis_aggregations).",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Executa query via Semantic Layer
+            normalized_data = block.get_data()
+
+            return Response(
+                {
+                    "success": True,
+                    "data": normalized_data,
+                }
+            )
         except Exception as e:
             return Response(
                 {"success": False, "error": str(e)}, status=status.HTTP_400_BAD_REQUEST

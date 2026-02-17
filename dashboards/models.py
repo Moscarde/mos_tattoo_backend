@@ -9,6 +9,7 @@ Este módulo define os modelos relacionados a dashboards:
 """
 
 import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -63,6 +64,16 @@ class DashboardTemplate(models.Model):
         verbose_name="Schema",
         help_text="Estrutura JSON do dashboard (blocos, gráficos, etc.) - Opcional",
     )
+    filterable_fields = models.JSONField(
+        blank=True,
+        null=True,
+        verbose_name="Campos Filtráveis",
+        help_text=(
+            "Configuração de filtros dinâmicos. Exemplo: "
+            '{"temporal": {"field": "sold_at", "label": "Data da Venda"}, '
+            '"categorical": [{"field": "seller_id", "label": "Vendedor"}]}'
+        ),
+    )
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 
@@ -73,6 +84,157 @@ class DashboardTemplate(models.Model):
 
     def __str__(self):
         return self.nome
+
+    def get_filter_metadata(self, instance_filter_sql=None):
+        """
+        Gera metadados dos campos filtráveis configurados no template.
+
+        Para filtros temporais: retorna min e max dates
+        Para filtros categóricos: retorna lista de valores distintos
+
+        Args:
+            instance_filter_sql: SQL WHERE adicional da instância (opcional)
+
+        Returns:
+            dict: Metadados estruturados dos filtros
+            {
+                "temporal": {"field": "sold_at", "label": "Data", "min": "2024-01-01", "max": ...},
+                "categorical": [{"field": "seller_id", "label": "Vendedor", "values": [1,2,3]}]
+            }
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if not self.filterable_fields:
+            return {"temporal": None, "categorical": []}
+
+        # Pega todas as datasources únicas dos blocos deste template
+        datasources = (
+            DataSource.objects.filter(blocks__template=self)
+            .distinct()
+        )
+
+        if not datasources.exists():
+            logger.warning(f"Template {self.nome} não tem datasources associadas")
+            return {"temporal": None, "categorical": []}
+
+        # Usa a primeira datasource como referência
+        # (em dashboards bem projetados, filtros globais devem estar em todos os datasources)
+        datasource = datasources.first()
+
+        metadata = {
+            "temporal": None,
+            "categorical": []
+        }
+
+        # Processa filtro temporal
+        temporal_config = self.filterable_fields.get("temporal")
+        if temporal_config:
+            field = temporal_config.get("field")
+            label = temporal_config.get("label", field)
+
+            try:
+                import psycopg2
+                import psycopg2.extras
+                
+                # Query diretamente na base query (sem subconsultas desnecessárias)
+                min_max_query = f"""
+                    SELECT 
+                        MIN({field}) as min_value,
+                        MAX({field}) as max_value
+                    FROM ({datasource.sql}) AS base_data
+                """
+                
+                # Adiciona filtro de instância se existir
+                if instance_filter_sql:
+                    min_max_query = min_max_query.rstrip() + f"\n    WHERE {instance_filter_sql}"
+
+                logger.info(f"Executando query temporal: {min_max_query}")
+                
+                # Executa usando psycopg2 diretamente
+                conn = psycopg2.connect(
+                    host=datasource.connection.host,
+                    port=datasource.connection.porta,
+                    database=datasource.connection.database,
+                    user=datasource.connection.usuario,
+                    password=datasource.connection.senha,
+                    connect_timeout=10,
+                )
+                
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute(min_max_query)
+                result = cursor.fetchall()
+                cursor.close()
+                conn.close()
+
+                logger.info(f"Resultado temporal: result={result}")
+
+                if result and len(result) > 0:
+                    row = dict(result[0])
+                    metadata["temporal"] = {
+                        "field": field,
+                        "label": label,
+                        "min": str(row.get("min_value")) if row.get("min_value") else None,
+                        "max": str(row.get("max_value")) if row.get("max_value") else None,
+                    }
+            except Exception as e:
+                logger.error(f"Erro ao processar filtro temporal {field}: {str(e)}", exc_info=True)
+
+        # Processa filtros categóricos
+        categorical_configs = self.filterable_fields.get("categorical", [])
+        for cat_config in categorical_configs:
+            field = cat_config.get("field")
+            label = cat_config.get("label", field)
+            limit = cat_config.get("limit", 100)  # Limit para evitar queries muito grandes
+
+            try:
+                import psycopg2
+                import psycopg2.extras
+                
+                # Query diretamente na base query
+                distinct_query = f"""
+                    SELECT DISTINCT {field} as value
+                    FROM ({datasource.sql}) AS base_data
+                    WHERE {field} IS NOT NULL
+                """
+                
+                # Adiciona filtro de instância se existir
+                if instance_filter_sql:
+                    distinct_query = distinct_query.rstrip() + f"\n      AND {instance_filter_sql}"
+                
+                distinct_query += f"\n    ORDER BY {field}\n    LIMIT {limit}"
+
+                logger.info(f"Executando query categórica: {distinct_query}")
+
+                # Executa usando psycopg2 diretamente
+                conn = psycopg2.connect(
+                    host=datasource.connection.host,
+                    port=datasource.connection.porta,
+                    database=datasource.connection.database,
+                    user=datasource.connection.usuario,
+                    password=datasource.connection.senha,
+                    connect_timeout=10,
+                )
+                
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute(distinct_query)
+                result = cursor.fetchall()
+                cursor.close()
+                conn.close()
+
+                logger.info(f"Resultado categórico: len(result)={len(result) if result else 0}")
+
+                if result:
+                    values = [dict(row).get("value") for row in result]
+                    metadata["categorical"].append({
+                        "field": field,
+                        "label": label,
+                        "values": values,
+                    })
+            except Exception as e:
+                logger.error(f"Erro ao processar filtro categórico {field}: {str(e)}", exc_info=True)
+
+        return metadata
 
 
 class DashboardInstance(models.Model):
@@ -231,10 +393,29 @@ class Connection(models.Model):
 
 class DataSource(models.Model):
     """
-    Fonte de dados (query SQL) para alimentar dashboards.
+    Fonte de dados (dataset base) para alimentar dashboards.
 
-    Armazena queries SQL que são executadas para buscar dados de uma conexão específica.
-    IMPORTANTE: Apenas SELECT é permitido por questões de segurança.
+    NOVA ARQUITETURA (Semantic Layer):
+    ===================================
+    O DataSource representa um DATASET BASE, não uma query agregada.
+
+    Conceito:
+    - Query SQL deve ser simples: SELECT * FROM table ou view limpa
+    - SEM agregações, GROUP BY ou filtros analíticos
+    - O sistema extrai metadados e classifica colunas automaticamente
+    - Cada coluna recebe um tipo semântico (datetime, measure, dimension)
+    - DashboardBlocks reutilizam o mesmo DataSource com intenções diferentes
+    - As agregações são geradas dinamicamente pelo QueryBuilder
+
+    FLUXO DE TRABALHO:
+    1. Usuário define query SQL base (SELECT simples, sem agregações)
+    2. Sistema valida e extrai metadados das colunas (nome, tipo DB, tipo semântico)
+    3. Colunas são classificadas automaticamente (datetime, measure, dimension)
+    4. DataSource fica pronto para ser reutilizado em múltiplos blocos
+    5. Cada DashboardBlock define: campo X, métricas Y, agregações, granularidade
+    6. QueryBuilder gera SQL dinâmico combinando intenção + dataset base
+
+    Inspirado em: Looker (LookML), Metabase (Models), Lightdash (dbt metrics)
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -242,7 +423,7 @@ class DataSource(models.Model):
         max_length=100,
         unique=True,
         verbose_name="Nome",
-        help_text="Nome único para identificar a fonte de dados",
+        help_text="Nome único para identificar o dataset (ex: 'Sales Data', 'Customer Events')",
     )
     descricao = models.TextField(blank=True, verbose_name="Descrição")
     connection = models.ForeignKey(
@@ -255,9 +436,88 @@ class DataSource(models.Model):
         blank=True,
     )
     sql = models.TextField(
-        verbose_name="Query SQL",
-        help_text="Query SQL (apenas SELECT). Use %(param)s para parâmetros.",
+        verbose_name="Query SQL Base",
+        help_text=(
+            "Query SQL SIMPLES do dataset base. "
+            "Use SELECT * FROM table ou view limpa. "
+            "NÃO inclua agregações (SUM, COUNT), GROUP BY ou filtros analíticos. "
+            "Exemplo: SELECT * FROM sales ou SELECT order_date, customer_id, amount FROM orders"
+        ),
     )
+
+    # === METADADOS AUTOMÁTICOS (SEMANTIC LAYER) ===
+    columns_metadata = models.JSONField(
+        default=list,
+        blank=True,
+        editable=False,
+        verbose_name="Metadados das Colunas",
+        help_text=(
+            "Metadados completos de cada coluna extraídos automaticamente. "
+            "Inclui: nome, tipo no banco, tipo semântico (datetime/measure/dimension), "
+            "agregações permitidas, granularidades temporais."
+        ),
+    )
+
+    # Campos de suporte
+    detected_columns = models.JSONField(
+        default=list,
+        blank=True,
+        editable=False,
+        verbose_name="Colunas Detectadas",
+        help_text="Lista simples de nomes de colunas. Para metadata completa, use columns_metadata.",
+    )
+
+    last_validation_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name="Última Validação",
+        help_text="Data/hora da última validação bem-sucedida da query",
+    )
+
+    last_validation_error = models.TextField(
+        blank=True,
+        editable=False,
+        verbose_name="Último Erro de Validação",
+        help_text="Mensagem do último erro de validação (se houver)",
+    )
+
+    # === CONTRATO SEMÂNTICO ===
+    metric_date_column = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Coluna de Data/Tempo",
+        help_text="Campo temporal obrigatório (ex: data_venda, created_at, mes_ano)",
+    )
+
+    metric_value_column = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Coluna de Valor Métrico",
+        help_text="Campo numérico obrigatório (ex: total_vendas, quantidade, receita)",
+    )
+
+    series_key_column = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Coluna de Série/Legenda",
+        help_text="Campo categórico opcional para legendas (ex: produto, vendedor, unidade)",
+    )
+
+    unit_id_column = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Coluna de ID da Unidade",
+        help_text="Campo identificador opcional (ex: unidade_id, cod_unidade)",
+    )
+
+    contract_validated = models.BooleanField(
+        default=False,
+        editable=False,
+        verbose_name="Contrato Validado",
+        help_text="Indica se o contrato semântico foi validado com sucesso",
+    )
+
     ativo = models.BooleanField(default=True, verbose_name="Ativo")
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
@@ -270,51 +530,741 @@ class DataSource(models.Model):
     def __str__(self):
         return self.nome
 
-    def clean(self):
+    def _validate_sql_security(self, sql):
         """
-        Valida que a query SQL é apenas SELECT.
+        Valida regras de segurança da query SQL.
+
+        Protege contra:
+        - Múltiplos statements (;)
+        - DDL/DML (INSERT, UPDATE, DELETE, etc)
+        - Queries que não sejam SELECT ou WITH
+
+        Args:
+            sql (str): Query SQL a validar
+
+        Raises:
+            ValidationError: Se a query violar alguma regra de segurança
         """
         from django.core.exceptions import ValidationError
 
-        if self.sql:
-            # Remove espaços e converte para minúsculo
-            sql_clean = self.sql.strip().lower()
+        if not sql:
+            return
 
-            # Verifica se começa com SELECT ou WITH (para CTEs)
-            if not (sql_clean.startswith("select") or sql_clean.startswith("with")):
+        # Remove espaços e converte para minúsculo
+        sql_clean = sql.strip().lower()
+
+        # Proíbe ponto-e-vírgula (múltiplos statements)
+        if ";" in sql:
+            raise ValidationError(
+                "A query SQL não pode conter ponto-e-vírgula (;). "
+                "Apenas um único SELECT é permitido."
+            )
+
+        # Verifica se começa com SELECT ou WITH (para CTEs)
+        if not (sql_clean.startswith("select") or sql_clean.startswith("with")):
+            raise ValidationError(
+                "A query SQL deve começar com SELECT ou WITH (Common Table Expression). "
+                "Apenas consultas de leitura são permitidas."
+            )
+
+        # Palavras-chave proibidas (DDL/DML)
+        forbidden_keywords = [
+            "insert",
+            "update",
+            "delete",
+            "drop",
+            "create",
+            "alter",
+            "truncate",
+            "grant",
+            "revoke",
+            "execute",
+            "call",
+        ]
+
+        for keyword in forbidden_keywords:
+            # Usa word boundary para evitar falsos positivos (ex: 'updated_at')
+            import re
+
+            if re.search(rf"\b{keyword}\b", sql_clean):
                 raise ValidationError(
-                    "A query SQL deve começar com SELECT ou WITH (Common Table Expression). "
-                    "Apenas consultas de leitura são permitidas."
+                    f'A query SQL não pode conter a palavra-chave "{keyword.upper()}". '
+                    "Apenas consultas de leitura (SELECT) são permitidas."
                 )
 
-            # Palavras-chave proibidas
-            forbidden_keywords = [
-                "insert",
-                "update",
-                "delete",
-                "drop",
-                "create",
-                "alter",
-                "truncate",
-                "grant",
-                "revoke",
-            ]
+    def validate_and_extract_columns(self):
+        """
+        Valida a query SQL executando-a com LIMIT 1 e extrai as colunas retornadas.
 
-            for keyword in forbidden_keywords:
-                if keyword in sql_clean:
-                    raise ValidationError(
-                        f'A query SQL não pode conter a palavra-chave "{keyword.upper()}". '
-                        "Apenas consultas de leitura (SELECT) são permitidas."
-                    )
+        Este método:
+        1. Executa a query de forma segura (statement_timeout, LIMIT 1)
+        2. Verifica sintaxe, permissões e conectividade
+        3. Extrai os nomes das colunas retornadas
+        4. Atualiza os metadados do DataSource
+
+        Returns:
+            tuple: (success: bool, message: str, columns: list)
+        """
+        import psycopg2
+        import psycopg2.extras
+        from django.utils import timezone
+
+        if not self.connection:
+            return False, "Nenhuma conexão configurada", []
+
+        if not self.connection.ativo:
+            return False, "Conexão está inativa", []
+
+        try:
+            # Conecta ao banco
+            conn = psycopg2.connect(
+                host=self.connection.host,
+                port=self.connection.porta,
+                database=self.connection.database,
+                user=self.connection.usuario,
+                password=self.connection.senha,
+                connect_timeout=5,
+            )
+
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Define timeout curto para segurança
+            cursor.execute("SET statement_timeout = '5s'")
+
+            # Encapsula a query em um subselect com LIMIT 1
+            # Isso garante que a query seja executada de forma segura
+            safe_query = f"SELECT * FROM ({self.sql}) AS __validation_subquery LIMIT 1"
+
+            cursor.execute(safe_query)
+
+            # Extrai nomes das colunas
+            column_names = [desc[0] for desc in cursor.description]
+
+            cursor.close()
+            conn.close()
+
+            # Atualiza metadados
+            self.detected_columns = column_names
+            self.last_validation_at = timezone.now()
+            self.last_validation_error = ""
+
+            return (
+                True,
+                f"Query validada com sucesso. {len(column_names)} colunas detectadas.",
+                column_names,
+            )
+
+        except psycopg2.OperationalError as e:
+            error_msg = f"Erro de conexão: {str(e)}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+        except psycopg2.ProgrammingError as e:
+            error_msg = f"Erro de sintaxe SQL: {str(e)}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+        except Exception as e:
+            # Captura timeout e outros erros
+            error_str = str(e)
+            if "timeout" in error_str.lower() or "canceled" in error_str.lower():
+                error_msg = "Query cancelada (timeout de 5s excedido)"
+            else:
+                error_msg = f"Erro inesperado ao validar query: {error_str}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+    def extract_columns_metadata(self):
+        """
+        Extrai metadados COMPLETOS das colunas e classifica semanticamente.
+
+        Este é o método PRINCIPAL da nova arquitetura semantic layer.
+
+        Extrai para cada coluna:
+        - Nome
+        - Tipo no banco de dados (PostgreSQL type)
+        - Tipo semântico inferido (datetime, measure, dimension)
+        - Operações permitidas (agregações para measures, granularidades para datetime)
+        - Nullabilidade
+
+        Returns:
+            tuple: (success: bool, message: str, metadata: list)
+        """
+        import psycopg2
+        import psycopg2.extras
+        from django.utils import timezone
+
+        from .query_builder import ColumnMetadata
+
+        if not self.connection:
+            return False, "Nenhuma conexão configurada", []
+
+        if not self.connection.ativo:
+            return False, "Conexão está inativa", []
+
+        try:
+            # Conecta ao banco
+            conn = psycopg2.connect(
+                host=self.connection.host,
+                port=self.connection.porta,
+                database=self.connection.database,
+                user=self.connection.usuario,
+                password=self.connection.senha,
+                connect_timeout=5,
+            )
+
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Define timeout curto
+            cursor.execute("SET statement_timeout = '5s'")
+
+            # Encapsula a query com LIMIT 1 para extrair metadados
+            safe_query = f"SELECT * FROM ({self.sql}) AS __metadata_extraction LIMIT 1"
+
+            cursor.execute(safe_query)
+
+            # Extrai informações detalhadas das colunas
+            columns_metadata = []
+
+            for desc in cursor.description:
+                column_name = desc[0]
+                type_code = desc[1]
+
+                # Mapeia type_code para nome do tipo PostgreSQL
+                cursor_pg = conn.cursor()
+                cursor_pg.execute(
+                    "SELECT typname FROM pg_type WHERE oid = %s", (type_code,)
+                )
+                type_result = cursor_pg.fetchone()
+                db_type = type_result[0] if type_result else "unknown"
+                cursor_pg.close()
+
+                # Infere tipo semântico
+                semantic_type = ColumnMetadata.infer_semantic_type(db_type)
+
+                # Define operações permitidas
+                allowed_aggregations = ColumnMetadata.get_allowed_aggregations(
+                    semantic_type
+                )
+                allowed_granularities = ColumnMetadata.get_allowed_granularities(
+                    semantic_type
+                )
+
+                # Cria metadata
+                metadata = ColumnMetadata(
+                    name=column_name,
+                    database_type=db_type,
+                    semantic_type=semantic_type,
+                    nullable=True,  # PostgreSQL não fornece isso facilmente via cursor
+                    allowed_aggregations=allowed_aggregations,
+                    allowed_granularities=allowed_granularities,
+                )
+
+                columns_metadata.append(metadata.to_dict())
+
+            cursor.close()
+            conn.close()
+
+            # Atualiza metadados
+            self.columns_metadata = columns_metadata
+            self.detected_columns = [
+                col["name"] for col in columns_metadata
+            ]  # Compatibilidade
+            self.last_validation_at = timezone.now()
+            self.last_validation_error = ""
+
+            # Estatísticas
+            stats = {
+                "total": len(columns_metadata),
+                "datetime": sum(
+                    1 for c in columns_metadata if c["semantic_type"] == "datetime"
+                ),
+                "measure": sum(
+                    1 for c in columns_metadata if c["semantic_type"] == "measure"
+                ),
+                "dimension": sum(
+                    1 for c in columns_metadata if c["semantic_type"] == "dimension"
+                ),
+            }
+
+            message = (
+                f"✅ Dataset validado com sucesso! "
+                f"{stats['total']} colunas detectadas: "
+                f"{stats['datetime']} datetime, "
+                f"{stats['measure']} measures, "
+                f"{stats['dimension']} dimensions"
+            )
+
+            return True, message, columns_metadata
+
+        except psycopg2.OperationalError as e:
+            error_msg = f"Erro de conexão: {str(e)}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+        except psycopg2.ProgrammingError as e:
+            error_msg = f"Erro de sintaxe SQL: {str(e)}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+        except Exception as e:
+            error_str = str(e)
+            if "timeout" in error_str.lower() or "canceled" in error_str.lower():
+                error_msg = "Query cancelada (timeout de 5s excedido)"
+            else:
+                error_msg = f"Erro inesperado: {error_str}"
+            self.last_validation_error = error_msg
+            return False, error_msg, []
+
+    def get_query_builder(self):
+        """
+        Retorna uma instância do QueryBuilder configurada para este DataSource.
+
+        Returns:
+            QueryBuilder instance
+        """
+        from .query_builder import ColumnMetadata, QueryBuilder
+
+        if not self.columns_metadata:
+            raise ValueError(
+                "Metadados de colunas não disponíveis. Execute extract_columns_metadata() primeiro."
+            )
+
+        # Converte metadata de dict para objetos ColumnMetadata
+        columns_metadata = [
+            ColumnMetadata.from_dict(col) for col in self.columns_metadata
+        ]
+
+        return QueryBuilder(
+            base_query=self.sql,
+            columns_metadata=columns_metadata,
+            connection_params=(
+                {
+                    "host": self.connection.host,
+                    "port": self.connection.porta,
+                    "database": self.connection.database,
+                }
+                if self.connection
+                else None
+            ),
+        )
+
+    def build_analytical_query(
+        self,
+        x_axis_field: str,
+        x_axis_granularity: Optional[str] = None,
+        y_axis_metrics: Optional[List[Dict[str, str]]] = None,
+        series_field: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        order_by: Optional[str] = "metric_date",
+        limit: Optional[int] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Gera query analítica usando o QueryBuilder.
+
+        Este é o método PRINCIPAL para geração dinâmica de SQL.
+
+        Args:
+            x_axis_field: Campo do eixo X
+            x_axis_granularity: Granularidade temporal (hour, day, week, month, quarter, year)
+            y_axis_metrics: Lista de métricas
+                Formato: [{"field": "revenue", "aggregation": "sum", "label": "Total"}]
+            series_field: Campo para legendas (opcional)
+            filters: Filtros estruturados
+            order_by: Campo de ordenação
+            limit: Limite de registros
+
+        Returns:
+            Tupla (query_sql, params_dict)
+        """
+        from typing import Any, Dict, List, Optional, Tuple
+
+        builder = self.get_query_builder()
+
+        return builder.build_analytical_query(
+            x_axis_field=x_axis_field,
+            x_axis_granularity=x_axis_granularity,
+            y_axis_metrics=y_axis_metrics,
+            series_field=series_field,
+            filters=filters,
+            order_by=order_by,
+            limit=limit,
+        )
+
+    def execute_analytical_query(
+        self,
+        x_axis_field: str,
+        x_axis_granularity: Optional[str] = None,
+        y_axis_metrics: Optional[List[Dict[str, str]]] = None,
+        series_field: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        order_by: Optional[str] = "metric_date",
+        limit: Optional[int] = None,
+        timeout: int = 30,
+    ) -> Tuple[bool, Any]:
+        """
+        Gera e executa query analítica.
+
+        Args:
+            (mesmos de build_analytical_query)
+            timeout: Timeout em segundos
+
+        Returns:
+            Tupla (success: bool, data_or_error: list|str)
+        """
+        from typing import Any, Dict, List, Optional, Tuple
+
+        from .query_builder import QueryExecutor
+
+        try:
+            # Gera a query
+            query, params = self.build_analytical_query(
+                x_axis_field=x_axis_field,
+                x_axis_granularity=x_axis_granularity,
+                y_axis_metrics=y_axis_metrics,
+                series_field=series_field,
+                filters=filters,
+                order_by=order_by,
+                limit=limit,
+            )
+
+            # Executa
+            executor = QueryExecutor(self.connection)
+            return executor.execute_query(query, params, timeout=timeout)
+
+        except Exception as e:
+            return False, f"Erro ao gerar/executar query: {str(e)}"
+
+    def validate_semantic_contract(self):
+        """
+        Valida o contrato semântico.
+
+        Verifica se:
+        - Campos obrigatórios estão preenchidos (metric_date, metric_value)
+        - Campos mapeados existem nas colunas detectadas
+        - Não há duplicatas nos mapeamentos
+
+        Returns:
+            tuple: (is_valid: bool, errors: list)
+        """
+        errors = []
+
+        # Verifica se há colunas detectadas
+        if not self.detected_columns:
+            errors.append(
+                "Nenhuma coluna detectada. Execute a validação da query primeiro."
+            )
+            return False, errors
+
+        detected_set = set(self.detected_columns)
+
+        # Valida campos obrigatórios
+        if not self.metric_date_column:
+            errors.append(
+                "Campo 'Coluna de Data/Tempo' é obrigatório no contrato semântico."
+            )
+        elif self.metric_date_column not in detected_set:
+            errors.append(
+                f"Coluna de data '{self.metric_date_column}' não existe na query. "
+                f"Colunas disponíveis: {', '.join(sorted(self.detected_columns))}"
+            )
+
+        if not self.metric_value_column:
+            errors.append(
+                "Campo 'Coluna de Valor Métrico' é obrigatório no contrato semântico."
+            )
+        elif self.metric_value_column not in detected_set:
+            errors.append(
+                f"Coluna de valor '{self.metric_value_column}' não existe na query. "
+                f"Colunas disponíveis: {', '.join(sorted(self.detected_columns))}"
+            )
+
+        # Valida campos opcionais (se preenchidos)
+        if self.series_key_column and self.series_key_column not in detected_set:
+            errors.append(
+                f"Coluna de série '{self.series_key_column}' não existe na query. "
+                f"Colunas disponíveis: {', '.join(sorted(self.detected_columns))}"
+            )
+
+        if self.unit_id_column and self.unit_id_column not in detected_set:
+            errors.append(
+                f"Coluna de unidade '{self.unit_id_column}' não existe na query. "
+                f"Colunas disponíveis: {', '.join(sorted(self.detected_columns))}"
+            )
+
+        # Valida duplicatas
+        mapped_columns = [
+            col
+            for col in [
+                self.metric_date_column,
+                self.metric_value_column,
+                self.series_key_column,
+                self.unit_id_column,
+            ]
+            if col  # Ignora valores vazios
+        ]
+
+        if len(mapped_columns) != len(set(mapped_columns)):
+            errors.append(
+                "Não é permitido mapear a mesma coluna para múltiplos campos do contrato."
+            )
+
+        is_valid = len(errors) == 0
+
+        # Atualiza flag de validação
+        self.contract_validated = is_valid
+
+        return is_valid, errors
+
+    def clean(self):
+        """
+        Valida o modelo antes de salvar.
+        """
+        from django.core.exceptions import ValidationError
+
+        # Valida segurança da SQL
+        if self.sql:
+            self._validate_sql_security(self.sql)
+
+        # Valida contrato semântico (se campos estiverem preenchidos)
+        has_contract_fields = any(
+            [
+                self.metric_date_column,
+                self.metric_value_column,
+                self.series_key_column,
+                self.unit_id_column,
+            ]
+        )
+
+        if has_contract_fields:
+            is_valid, errors = self.validate_semantic_contract()
+            if not is_valid:
+                raise ValidationError({"__all__": errors})
 
     def save(self, *args, **kwargs):
-        """Override save para executar validação."""
+        """
+        Override save para executar validação e extração de metadados.
+
+        FLUXO (Nova Arquitetura):
+        1. Valida segurança da SQL
+        2. Se a SQL mudou, extrai metadados COMPLETOS das colunas
+        3. Classifica colunas automaticamente (datetime, measure, dimension)
+        4. Salva o modelo com metadados preenchidos
+        """
+        # Verifica se é uma criação ou atualização
+        is_new = self.pk is None
+
+        # Se é update, verifica se a SQL mudou
+        sql_changed = False
+        if not is_new:
+            try:
+                old_instance = DataSource.objects.get(pk=self.pk)
+                sql_changed = old_instance.sql != self.sql
+            except DataSource.DoesNotExist:
+                pass
+
+        # Valida segurança (sempre)
         self.clean()
+
+        # Se a SQL mudou ou é novo, extrai metadados COMPLETOS das colunas
+        # Usa o novo método que classifica tipos semânticos
+        # Não bloqueia o save se falhar (permite salvar SQL em desenvolvimento)
+        if (is_new or sql_changed) and self.sql and self.connection:
+            # Tenta o novo método de extração completa
+            success, message, metadata = self.extract_columns_metadata()
+            if not success:
+                # Fallback: tenta método antigo se o novo falhar
+                self.validate_and_extract_columns()
+
         super().save(*args, **kwargs)
+
+    def generate_normalized_query(
+        self,
+        date_start=None,
+        date_end=None,
+        series_filter=None,
+        unit_id_filter=None,
+        additional_filters=None,
+    ):
+        """
+        Gera a query SQL normalizada com aliases padronizados.
+
+        Encapsula a query original como CTE e aplica:
+        - Aliases padronizados (metric_date, metric_value, series_key, unit_id)
+        - Filtros dinâmicos no WHERE (sempre no SQL, nunca em memória)
+        - Ordenação por metric_date
+
+        Args:
+            date_start (str/date): Data inicial para filtro (opcional)
+            date_end (str/date): Data final para filtro (opcional)
+            series_filter (list): Lista de valores para filtrar series_key (opcional)
+            unit_id_filter (list): Lista de IDs de unidade para filtrar (opcional)
+            additional_filters (str): Cláusula WHERE adicional customizada (opcional)
+
+        Returns:
+            str: Query SQL normalizada
+
+        Raises:
+            ValueError: Se o contrato semântico não estiver validado
+        """
+        if not self.contract_validated:
+            raise ValueError(
+                "Contrato semântico não validado. Configure os campos obrigatórios primeiro."
+            )
+
+        # Monta SELECT com aliases padronizados
+        select_parts = [
+            f"{self.metric_date_column} AS metric_date",
+            f"{self.metric_value_column} AS metric_value",
+        ]
+
+        if self.series_key_column:
+            select_parts.append(f"{self.series_key_column} AS series_key")
+        else:
+            # Se não tem series_key, usa NULL
+            select_parts.append("NULL AS series_key")
+
+        if self.unit_id_column:
+            select_parts.append(f"{self.unit_id_column} AS unit_id")
+        else:
+            # Se não tem unit_id, usa NULL
+            select_parts.append("NULL AS unit_id")
+
+        # Monta a query usando CTE
+        query_parts = []
+        query_parts.append("WITH __source_data AS (")
+        query_parts.append(f"  {self.sql}")
+        query_parts.append(")")
+        query_parts.append("SELECT")
+        query_parts.append("  " + ",\n  ".join(select_parts))
+        query_parts.append("FROM __source_data")
+
+        # Monta filtros WHERE
+        where_clauses = []
+
+        if date_start:
+            where_clauses.append(f"metric_date >= '{date_start}'")
+
+        if date_end:
+            where_clauses.append(f"metric_date <= '{date_end}'")
+
+        if series_filter and self.series_key_column:
+            # Escapa valores para evitar SQL injection
+            escaped_values = [str(v).replace("'", "''") for v in series_filter]
+            values_str = "', '".join(escaped_values)
+            where_clauses.append(f"series_key IN ('{values_str}')")
+
+        if unit_id_filter and self.unit_id_column:
+            # Escapa valores para evitar SQL injection
+            escaped_values = [str(v).replace("'", "''") for v in unit_id_filter]
+            values_str = "', '".join(escaped_values)
+            where_clauses.append(f"unit_id IN ('{values_str}')")
+
+        if additional_filters:
+            where_clauses.append(f"({additional_filters})")
+
+        if where_clauses:
+            query_parts.append("WHERE")
+            query_parts.append("  " + "\n  AND ".join(where_clauses))
+
+        # Ordena por data
+        query_parts.append("ORDER BY metric_date")
+
+        return "\n".join(query_parts)
+
+    def execute_normalized_query(
+        self,
+        date_start=None,
+        date_end=None,
+        series_filter=None,
+        unit_id_filter=None,
+        additional_filters=None,
+        timeout=30,
+    ):
+        """
+        Executa a query normalizada com filtros aplicados no SQL.
+
+        Args:
+            date_start (str/date): Data inicial para filtro (opcional)
+            date_end (str/date): Data final para filtro (opcional)
+            series_filter (list): Lista de valores para filtrar series_key (opcional)
+            unit_id_filter (list): Lista de IDs de unidade para filtrar (opcional)
+            additional_filters (str): Cláusula WHERE adicional customizada (opcional)
+            timeout (int): Timeout em segundos (padrão: 30)
+
+        Returns:
+            tuple: (success: bool, data: list|str)
+                   Se sucesso, data é lista de dicionários com colunas padronizadas.
+                   Se erro, data é a mensagem de erro.
+        """
+        import psycopg2
+        import psycopg2.extras
+
+        if not self.ativo or not self.connection.ativo:
+            return False, "DataSource ou Connection está inativo"
+
+        try:
+            # Gera a query normalizada
+            normalized_query = self.generate_normalized_query(
+                date_start=date_start,
+                date_end=date_end,
+                series_filter=series_filter,
+                unit_id_filter=unit_id_filter,
+                additional_filters=additional_filters,
+            )
+
+            # Conecta ao banco
+            conn = psycopg2.connect(
+                host=self.connection.host,
+                port=self.connection.porta,
+                database=self.connection.database,
+                user=self.connection.usuario,
+                password=self.connection.senha,
+                connect_timeout=10,
+            )
+
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Define timeout
+            cursor.execute(f"SET statement_timeout = '{timeout}s'")
+
+            # Executa a query normalizada
+            cursor.execute(normalized_query)
+
+            # Busca todos os resultados
+            results = cursor.fetchall()
+
+            # Converte RealDictRow para dict comum
+            data = [dict(row) for row in results]
+
+            cursor.close()
+            conn.close()
+
+            return True, data
+
+        except ValueError as e:
+            # Erro de contrato não validado
+            return False, str(e)
+
+        except psycopg2.OperationalError as e:
+            return False, f"Erro de conexão: {str(e)}"
+
+        except psycopg2.ProgrammingError as e:
+            return False, f"Erro na query SQL: {str(e)}"
+
+        except Exception as e:
+            # Captura timeout e outros erros
+            error_str = str(e)
+            if "timeout" in error_str.lower() or "canceled" in error_str.lower():
+                return False, f"Query cancelada (timeout de {timeout}s excedido)"
+            return False, f"Erro ao executar query: {error_str}"
 
     def execute_query(self, params=None):
         """
-        Executa a query SQL usando a conexão configurada.
+        Executa a query SQL ORIGINAL (não normalizada) usando a conexão configurada.
+
+        NOTA: Para uso em dashboards, prefira execute_normalized_query().
+        Este método é mantido para compatibilidade e debug.
 
         Args:
             params (dict): Parâmetros para a query (opcional)
@@ -430,16 +1380,36 @@ class DashboardBlock(models.Model):
     """
     Bloco de dashboard - unidade renderizável de um gráfico/componente.
 
-    Este é o modelo CENTRAL da nova arquitetura de dashboards.
+    ARQUITETURA SEMÂNTICA (Semantic Layer):
+    =======================================
+    Este modelo segue o padrão de "separation of concerns" usado em
+    ferramentas como Looker, Metabase e Lightdash:
 
-    Cada bloco define:
-    - Tipo de gráfico (bar, line, pie, area)
-    - Eixos (x_axis_field, y_axis_fields)
-    - Layout (col_span, row_span)
-    - Fonte de dados (DataSource)
+    1. DataSource = DATASET BASE (tabela ou query reutilizável)
+       - Define os dados brutos disponíveis
+       - Extrai metadata automática (tipos, semânticas)
+       - Não contém agregações pré-definidas
 
-    O Django Admin é a única fonte de verdade para a configuração.
-    O backend normaliza os dados e o frontend apenas renderiza.
+    2. DashboardBlock = INTENÇÃO ANALÍTICA (o que visualizar)
+       - Define COMO agregar os dados do DataSource
+       - Especifica campos, agregações, granularidades, filtros
+       - QueryBuilder gera SQL dinamicamente
+
+    3. Benefícios:
+       - Um DataSource serve múltiplos blocos
+       - Mudança no DataSource propaga automaticamente
+       - Sem duplicação de queries SQL
+       - Contratos semânticos garantem consistência
+
+    CONFIGURAÇÃO:
+    ========================
+    - x_axis_field: Campo do eixo X (dimensão ou datetime)
+    - x_axis_granularity: Granularidade temporal (hour/day/week/month/quarter/year)
+    - series_field: Campo de agrupamento/legenda (opcional)
+    - y_axis_aggregations: Lista de agregações [{field, aggregation, label, axis}]
+      * Agregações disponíveis: sum, avg, count, count_distinct, min, max, median
+
+    O QueryBuilder gera dinamicamente o SQL baseado nessas configurações.
     """
 
     # Tipos de gráficos suportados
@@ -500,13 +1470,34 @@ class DashboardBlock(models.Model):
         help_text="Tipo de visualização do bloco",
     )
 
-    # Configuração de eixos
+    # ========================================================================
+    # SEMANTIC LAYER - CONFIGURAÇÃO DE EIXOS
+    # ========================================================================
+
     x_axis_field = models.CharField(
         max_length=100,
         blank=True,
         default="",
         verbose_name="Campo do Eixo X",
-        help_text="Nome do campo da query que representa o eixo X (ex: 'data', 'produto', 'mes')",
+        help_text="Nome do campo do DataSource para o eixo X (ex: 'data_venda', 'produto', 'mes')",
+    )
+
+    x_axis_granularity = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        verbose_name="Granularidade do Eixo X",
+        help_text="""
+        (OPCIONAL) Se x_axis_field for DATETIME, especifica a granularidade temporal:
+        - hour: agrupa por hora
+        - day: agrupa por dia
+        - week: agrupa por semana
+        - month: agrupa por mês
+        - quarter: agrupa por trimestre
+        - year: agrupa por ano
+        
+        Se não especificado, usa o valor bruto do campo.
+        """,
     )
 
     series_field = models.CharField(
@@ -514,26 +1505,43 @@ class DashboardBlock(models.Model):
         blank=True,
         default="",
         verbose_name="Campo de Série/Legenda",
-        help_text="""(OPCIONAL) Nome do campo da query que define as séries do gráfico (ex: 'nome_unidade', 'produto', 'vendedor').
-        Quando configurado, o backend agrupa os dados por este campo, gerando uma série distinta para cada valor único.
-        Útil para gráficos de barras com múltiplas séries/legendas.
-        Se não configurado, o gráfico terá uma única série.""",
+        help_text="""
+        (OPCIONAL) Campo do DataSource para agrupar séries/legendas (ex: 'unidade', 'produto', 'vendedor').
+        Gera uma série distinta para cada valor único do campo.
+        """,
     )
 
-    y_axis_fields = models.JSONField(
+    y_axis_aggregations = models.JSONField(
         default=list,
         blank=True,
-        verbose_name="Campos do Eixo Y",
+        verbose_name="Agregações do Eixo Y",
         help_text="""
-        Lista de métricas para o eixo Y. Formato:
+        Lista de agregações analíticas. Formato:
         [
-          {"field": "total_sales", "label": "Vendas", "axis": "y1"},
-          {"field": "avg_ticket", "label": "Ticket Médio", "axis": "y2"}
+          {
+            "field": "valor_venda",
+            "aggregation": "sum",
+            "label": "Total de Vendas",
+            "axis": "y1"
+          },
+          {
+            "field": "valor_venda",
+            "aggregation": "avg",
+            "label": "Ticket Médio",
+            "axis": "y2"
+          }
         ]
         
-        - field: nome do campo na query
-        - label: rótulo exibido no gráfico
-        - axis: y1, y2, etc (para eixos múltiplos)
+        Agregações disponíveis:
+        - sum: soma dos valores
+        - avg: média dos valores
+        - count: contagem de registros
+        - count_distinct: contagem de valores únicos
+        - min: valor mínimo
+        - max: valor máximo
+        - median: mediana dos valores
+        
+        O QueryBuilder gera SQL dinamicamente baseado nessas configurações.
         """,
     )
 
@@ -584,9 +1592,6 @@ class DashboardBlock(models.Model):
     def clean(self):
         """
         Valida a configuração do bloco.
-
-        Nota: Os campos x_axis_field e y_axis_fields são opcionais para permitir
-        criar blocos no inline e configurá-los depois na página de detalhe.
         """
         from django.core.exceptions import ValidationError
 
@@ -600,27 +1605,28 @@ class DashboardBlock(models.Model):
         if self.row_span and self.row_span < 1:
             errors["row_span"] = "Altura deve ser no mínimo 1"
 
-        # Valida y_axis_fields APENAS se estiver preenchido (não vazio)
-        # Permite salvar com lista vazia para configurar depois
+        # Valida y_axis_aggregations se estiver preenchido
         if (
-            hasattr(self, "y_axis_fields")
-            and self.y_axis_fields is not None
-            and len(self.y_axis_fields) > 0
+            hasattr(self, "y_axis_aggregations")
+            and self.y_axis_aggregations is not None
+            and len(self.y_axis_aggregations) > 0
         ):
-            if not isinstance(self.y_axis_fields, list):
-                errors["y_axis_fields"] = "Deve ser uma lista"
+            if not isinstance(self.y_axis_aggregations, list):
+                errors["y_axis_aggregations"] = "Deve ser uma lista"
             else:
-                # Valida estrutura de cada métrica
-                for idx, metric in enumerate(self.y_axis_fields):
-                    if not isinstance(metric, dict):
-                        errors["y_axis_fields"] = f"Item {idx} deve ser um objeto JSON"
+                # Valida estrutura de cada agregação
+                for idx, agg in enumerate(self.y_axis_aggregations):
+                    if not isinstance(agg, dict):
+                        errors["y_axis_aggregations"] = (
+                            f"Item {idx} deve ser um objeto JSON"
+                        )
                         break
 
-                    required_keys = ["field", "label", "axis"]
-                    missing_keys = [key for key in required_keys if key not in metric]
+                    required_keys = ["field", "aggregation", "label", "axis"]
+                    missing_keys = [key for key in required_keys if key not in agg]
 
                     if missing_keys:
-                        errors["y_axis_fields"] = (
+                        errors["y_axis_aggregations"] = (
                             f"Item {idx} está faltando as chaves: {', '.join(missing_keys)}"
                         )
                         break
@@ -628,192 +1634,319 @@ class DashboardBlock(models.Model):
         if errors:
             raise ValidationError(errors)
 
-    def validate_fields_against_query(self, query_result):
+    # ========================================================================
+    # SEMANTIC LAYER METHODS
+    # ========================================================================
+
+    def get_analytical_query_params(self, applied_filters=None):
         """
-        Valida se os campos configurados existem no resultado da query.
+        Converte a configuração do bloco para parâmetros do execute_analytical_query().
 
         Args:
-            query_result: Lista de dicionários retornados pela query
+            applied_filters: Filtros aplicados via query params (opcional)
+                            {field: {operator: value}}
 
         Returns:
-            tuple: (is_valid: bool, errors: list)
+            dict: Parâmetros para execute_analytical_query()
         """
-        if not query_result or len(query_result) == 0:
-            return True, []  # Query vazia é válida
+        # Monta lista de métricas
+        y_axis_metrics = []
+        for agg_config in self.y_axis_aggregations:
+            field = agg_config.get("field")
+            aggregation = agg_config.get("aggregation", "sum")
+            label = agg_config.get("label", field)
 
-        errors = []
-        available_fields = set(query_result[0].keys())
-
-        # Valida x_axis_field
-        if self.x_axis_field not in available_fields:
-            errors.append(
-                f"Campo do eixo X '{self.x_axis_field}' não encontrado na query. "
-                f"Campos disponíveis: {', '.join(sorted(available_fields))}"
-            )
-
-        # Valida series_field (se configurado)
-        if self.series_field and self.series_field not in available_fields:
-            errors.append(
-                f"Campo de série/legenda '{self.series_field}' não encontrado na query. "
-                f"Campos disponíveis: {', '.join(sorted(available_fields))}"
-            )
-
-        # Valida y_axis_fields
-        for metric in self.y_axis_fields:
-            field = metric.get("field")
-            if field and field not in available_fields:
-                errors.append(
-                    f"Campo da métrica '{field}' ('{metric.get('label')}') não encontrado na query. "
-                    f"Campos disponíveis: {', '.join(sorted(available_fields))}"
-                )
-
-        return len(errors) == 0, errors
-
-    def normalize_data(self, query_result):
-        """
-        Normaliza os dados da query para o formato esperado pelo frontend.
-
-        Args:
-            query_result: Lista de dicionários retornados pela query
-
-        Returns:
-            dict: Dados normalizados no formato:
-            {
-                "x": [...],
-                "series": [
-                    {"axis": "y1", "label": "...", "values": [...]},
-                    ...
-                ]
-            }
-        """
-        if not query_result:
-            return {"x": [], "series": []}
-
-        # Valida campos antes de normalizar
-        is_valid, errors = self.validate_fields_against_query(query_result)
-        if not is_valid:
-            raise ValueError(f"Erro de validação: {'; '.join(errors)}")
-
-        # Se series_field estiver configurado, usa lógica de múltiplas séries
-        if self.series_field:
-            return self._normalize_data_with_series(query_result)
-        else:
-            return self._normalize_data_single_series(query_result)
-
-    def _normalize_data_single_series(self, query_result):
-        """
-        Normalização para gráficos de série única (comportamento original).
-
-        Args:
-            query_result: Lista de dicionários retornados pela query
-
-        Returns:
-            dict: Dados normalizados
-        """
-        # Extrai valores do eixo X
-        x_values = [row.get(self.x_axis_field) for row in query_result]
-
-        # Extrai valores das séries (eixo Y)
-        series = []
-        for metric in self.y_axis_fields:
-            field = metric.get("field")
-            label = metric.get("label", field)
-            axis = metric.get("axis", "y1")
-
-            values = [row.get(field) for row in query_result]
-
-            series.append(
+            y_axis_metrics.append(
                 {
-                    "axis": axis,
+                    "field": field,
+                    "aggregation": aggregation,
                     "label": label,
-                    "values": values,
                 }
             )
 
-        return {
-            "x": x_values,
-            "series": series,
+        params = {
+            "x_axis_field": self.x_axis_field,
+            "x_axis_granularity": (
+                self.x_axis_granularity if self.x_axis_granularity else None
+            ),
+            "y_axis_metrics": y_axis_metrics,
+            "series_field": self.series_field if self.series_field else None,
+            "filters": {},
+            "order_by": "metric_date",
+            "limit": 1000,
         }
 
-    def _normalize_data_with_series(self, query_result):
+        # Filtros SQL (se configurado em config)
+        if self.config.get("filter_sql"):
+            params["filters"]["where_clause"] = self.config["filter_sql"]
+
+        # Adiciona filtros dinâmicos aplicados
+        if applied_filters:
+            params["filters"]["dynamic_filters"] = applied_filters
+
+        return params
+
+    def get_generated_sql(self):
         """
-        Normalização para gráficos com múltiplas séries/legendas.
-
-        Agrupa os dados pelo campo series_field, gerando uma série distinta
-        para cada valor único encontrado. Alinha os valores pelo eixo X,
-        preenchendo com null quando uma série não possuir dados para um
-        determinado valor de X.
-
-        Args:
-            query_result: Lista de dicionários retornados pela query
+        Retorna a query SQL gerada pelo QueryBuilder (para debug/visualização).
 
         Returns:
-            dict: Dados normalizados com múltiplas séries
+            str: Query SQL formatada
         """
-        from collections import defaultdict
+        if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
+            return (
+                "-- Configure pelo menos uma agregação no campo 'y_axis_aggregations'."
+            )
 
-        # 1. Extrai todos os valores únicos do eixo X e ordena
-        x_values_set = set()
-        for row in query_result:
-            x_values_set.add(row.get(self.x_axis_field))
+        if (
+            not self.datasource.columns_metadata
+            or len(self.datasource.columns_metadata) == 0
+        ):
+            return "-- DataSource não possui metadados. Re-salve o DataSource para extrair metadados."
 
-        x_values = sorted(list(x_values_set))
-        x_value_to_index = {val: idx for idx, val in enumerate(x_values)}
+        try:
+            # Obtém parâmetros analíticos
+            params = self.get_analytical_query_params()
 
-        # 2. Extrai todos os valores únicos do campo de série
-        series_values_set = set()
-        for row in query_result:
-            series_values_set.add(row.get(self.series_field))
+            # Gera a query SQL usando build_analytical_query
+            sql_query, sql_params = self.datasource.build_analytical_query(**params)
 
-        series_values = sorted(list(series_values_set))
+            # Formata com disclaimer
+            return (
+                "-- QUERY GERADA PELA SEMANTIC LAYER\n"
+                "-- Esta query é gerada dinamicamente baseada na configuração do bloco\n"
+                "-- IMPORTANTE: Salve o bloco para atualizar esta visualização\n\n"
+                f"{sql_query}"
+            )
+        except Exception as e:
+            return f"-- Erro ao gerar query: {str(e)}"
 
-        # 3. Para cada métrica do eixo Y, cria uma série para cada valor de series_field
-        all_series = []
+    def execute_query(self, applied_filters=None):
+        """
+        Executa a query usando a Semantic Layer (QueryBuilder).
 
-        for metric in self.y_axis_fields:
-            field = metric.get("field")
-            base_label = metric.get("label", field)
-            axis = metric.get("axis", "y1")
+        Args:
+            applied_filters: Filtros aplicados via query params (opcional)
 
-            # Agrupa os dados por series_field
-            data_by_series = defaultdict(lambda: defaultdict(lambda: None))
+        Returns:
+            tuple: (success: bool, data: list|str)
+                   Se sucesso, data é lista de dicionários com os dados.
+                   Se erro, data é a mensagem de erro.
 
-            for row in query_result:
-                x_val = row.get(self.x_axis_field)
-                series_val = row.get(self.series_field)
-                y_val = row.get(field)
+        Raises:
+            ValueError: Se configuração estiver inválida
+        """
+        if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
+            return (
+                False,
+                "Configure pelo menos uma agregação no campo 'y_axis_aggregations'.",
+            )
 
-                # Armazena o valor na estrutura agrupada
-                data_by_series[series_val][x_val] = y_val
+        if (
+            not self.datasource.columns_metadata
+            or len(self.datasource.columns_metadata) == 0
+        ):
+            return (
+                False,
+                "DataSource não possui metadados. Execute extract_columns_metadata() no DataSource.",
+            )
 
-            # 4. Gera uma série para cada valor de series_field
-            for series_val in series_values:
-                # Monta o array de valores alinhado com x_values
-                values = []
-                for x_val in x_values:
-                    val = data_by_series[series_val].get(x_val)
-                    values.append(val)
+        # Obtém parâmetros analíticos com filtros aplicados
+        params = self.get_analytical_query_params(applied_filters=applied_filters)
 
-                # Define o label da série
-                # Se houver apenas uma métrica, usa apenas o nome da série
-                # Se houver múltiplas métricas, combina: "base_label - series_val"
-                if len(self.y_axis_fields) == 1:
-                    series_label = str(series_val)
+        # Executa query através do DataSource
+        return self.datasource.execute_analytical_query(**params)
+
+    def get_data(self, applied_filters=None):
+        """
+        Método principal para obter dados do bloco.
+
+        Executa a query usando Semantic Layer (QueryBuilder) e retorna
+        os dados prontos para o frontend.
+
+        Args:
+            applied_filters: Filtros aplicados via query params (opcional)
+
+        Returns:
+            tuple: (success: bool, data: dict|str)
+                   Se success=True, data é dict normalizado {"x": [...], "series": [...]}
+                   Se success=False, data é mensagem de erro (str)
+        """
+        success, raw_data = self.execute_query(applied_filters=applied_filters)
+
+        if not success:
+            return False, raw_data
+
+        # Normaliza dados para formato do frontend
+        normalized_data = self.normalize_query_results(raw_data)
+        return True, normalized_data
+
+    def format_x_axis_value(self, value):
+        """
+        Formata o valor do eixo X baseado na granularidade configurada.
+        
+        Args:
+            value: Valor bruto do eixo X (geralmente datetime ou string)
+            
+        Returns:
+            str: Valor formatado para exibição
+        """
+        from datetime import datetime
+        
+        # Se não há granularidade ou valor vazio, retorna string direta
+        if not self.x_axis_granularity or not value:
+            return str(value)
+        
+        # Tenta parsear como datetime
+        try:
+            if isinstance(value, str):
+                # Tenta vários formatos comuns
+                for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S.%f"]:
+                    try:
+                        dt = datetime.strptime(value, fmt)
+                        break
+                    except ValueError:
+                        continue
                 else:
-                    series_label = f"{base_label} - {series_val}"
+                    # Se nenhum formato funcionou, retorna string original
+                    return str(value)
+            elif hasattr(value, 'strftime'):
+                dt = value
+            else:
+                return str(value)
+        except Exception:
+            return str(value)
+        
+        # Formata baseado na granularidade
+        granularity = self.x_axis_granularity.lower()
+        
+        if granularity == 'hour':
+            return dt.strftime('%d/%m/%Y %H:00')
+        elif granularity == 'day':
+            return dt.strftime('%d/%m/%Y')
+        elif granularity == 'week':
+            week_num = dt.isocalendar()[1]
+            return f"Semana {week_num}, {dt.year}"
+        elif granularity == 'month':
+            return dt.strftime('%m/%Y')
+        elif granularity == 'quarter':
+            quarter = (dt.month - 1) // 3 + 1
+            return f"Q{quarter}/{dt.year}"
+        elif granularity == 'year':
+            return str(dt.year)
+        else:
+            return str(value)
 
-                all_series.append(
-                    {
+    def normalize_query_results(self, query_results):
+        """
+        Normaliza os resultados da query para o formato esperado pelo frontend.
+
+        Converte de:
+        [
+            {"metric_date": "2024-01", "series_key": "A", "metric_value_1": 100},
+            {"metric_date": "2024-01", "series_key": "B", "metric_value_1": 150},
+            {"metric_date": "2024-02", "series_key": "A", "metric_value_1": 120},
+        ]
+
+        Para:
+        {
+            "x": ["2024-01", "2024-02"],
+            "series": [
+                {
+                    "axis": "y1",
+                    "label": "A - Total Valor",
+                    "values": [100, 120]
+                },
+                {
+                    "axis": "y1",
+                    "label": "B - Total Valor",
+                    "values": [150, null]
+                }
+            ]
+        }
+
+        Args:
+            query_results: Lista de dicionários retornada pela query
+
+        Returns:
+            dict: Dados normalizados no formato {"x": [...], "series": [...]}
+        """
+        if not query_results or len(query_results) == 0:
+            return {"x": [], "series": []}
+
+        # QueryBuilder sempre usa 'metric_date' para o eixo X
+        x_field = "metric_date"
+
+        # Extrai valores únicos do eixo X e formata baseado na granularidade
+        raw_x_values = sorted(list(set(row.get(x_field, "") for row in query_results)))
+        x_values = [self.format_x_axis_value(val) for val in raw_x_values]
+        
+        # Cria mapeamento de valor bruto -> valor formatado para lookup
+        x_value_map = {str(raw): formatted for raw, formatted in zip(raw_x_values, x_values)}
+
+        # Identifica se há série (QueryBuilder usa 'series_key')
+        has_series = "series_key" in query_results[0]
+
+        # Cria estrutura de séries
+        series_data = {}
+
+        for row in query_results:
+            # Usa valor bruto para lookup interno, mas exibe formatado
+            x_val_raw = str(row.get(x_field, ""))
+            x_val = x_value_map.get(x_val_raw, x_val_raw)
+            series_key = str(row.get("series_key", "")) if has_series else "default"
+
+            if series_key not in series_data:
+                series_data[series_key] = {}
+
+            # Adiciona cada métrica do y_axis_aggregations
+            # QueryBuilder usa aliases: metric_value_1, metric_value_2, etc.
+            for idx, agg_config in enumerate(self.y_axis_aggregations):
+                label = agg_config.get("label", agg_config.get("field"))
+                axis = agg_config.get("axis", "y1")
+
+                # Alias do QueryBuilder: metric_value_1, metric_value_2, ...
+                alias = f"metric_value_{idx + 1}"
+
+                # Chave única da série (combina série + métrica)
+                # Se há série e apenas UMA métrica, usa apenas o nome da série para evitar redundância
+                # Se há várias métricas, adiciona o label da métrica para diferenciar
+                if has_series:
+                    if len(self.y_axis_aggregations) == 1:
+                        serie_label = series_key  # Ex: "Unidade São Paulo - Centro"
+                    else:
+                        serie_label = f"{series_key} - {label}"  # Ex: "Unidade SP - Total"
+                else:
+                    serie_label = label
+
+                # Inicializa série se não existir
+                if serie_label not in series_data[series_key]:
+                    series_data[series_key][serie_label] = {
                         "axis": axis,
-                        "label": series_label,
+                        "label": serie_label,
+                        "values_dict": {},
+                    }
+
+                # Adiciona valor para este x
+                value = row.get(alias)
+                series_data[series_key][serie_label]["values_dict"][x_val] = value
+
+        # Converte para formato final
+        series_list = []
+        for series_key in sorted(series_data.keys()):
+            for serie_label, serie_info in series_data[series_key].items():
+                # Preenche valores na ordem do eixo X (None para valores faltantes)
+                values = [serie_info["values_dict"].get(x_val) for x_val in x_values]
+
+                series_list.append(
+                    {
+                        "axis": serie_info["axis"],
+                        "label": serie_info["label"],
                         "values": values,
-                        "series_value": str(
-                            series_val
-                        ),  # Valor original da série para referência
                     }
                 )
 
         return {
             "x": x_values,
-            "series": all_series,
+            "series": series_list,
         }
