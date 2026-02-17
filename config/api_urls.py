@@ -6,12 +6,17 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from dashboards.views import DashboardInstanceViewSet, DataSourceViewSet
+from dashboards.views import (
+    DashboardBlockViewSet,
+    DashboardInstanceViewSet,
+    DataSourceViewSet,
+)
 
 # Router para endpoints do DRF
 router = DefaultRouter()
 router.register(r"dashboards", DashboardInstanceViewSet, basename="dashboard")
 router.register(r"datasources", DataSourceViewSet, basename="datasource")
+router.register(r"dashboard-blocks", DashboardBlockViewSet, basename="dashboard-block")
 
 urlpatterns = [
     # Auth endpoints
