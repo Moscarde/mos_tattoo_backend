@@ -103,16 +103,14 @@ class DashboardTemplate(models.Model):
             }
         """
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         if not self.filterable_fields:
             return {"temporal": None, "categorical": []}
 
         # Pega todas as datasources únicas dos blocos deste template
-        datasources = (
-            DataSource.objects.filter(blocks__template=self)
-            .distinct()
-        )
+        datasources = DataSource.objects.filter(blocks__template=self).distinct()
 
         if not datasources.exists():
             logger.warning(f"Template {self.nome} não tem datasources associadas")
@@ -122,10 +120,7 @@ class DashboardTemplate(models.Model):
         # (em dashboards bem projetados, filtros globais devem estar em todos os datasources)
         datasource = datasources.first()
 
-        metadata = {
-            "temporal": None,
-            "categorical": []
-        }
+        metadata = {"temporal": None, "categorical": []}
 
         # Processa filtro temporal
         temporal_config = self.filterable_fields.get("temporal")
@@ -136,7 +131,7 @@ class DashboardTemplate(models.Model):
             try:
                 import psycopg2
                 import psycopg2.extras
-                
+
                 # Query diretamente na base query (sem subconsultas desnecessárias)
                 min_max_query = f"""
                     SELECT 
@@ -144,13 +139,15 @@ class DashboardTemplate(models.Model):
                         MAX({field}) as max_value
                     FROM ({datasource.sql}) AS base_data
                 """
-                
+
                 # Adiciona filtro de instância se existir
                 if instance_filter_sql:
-                    min_max_query = min_max_query.rstrip() + f"\n    WHERE {instance_filter_sql}"
+                    min_max_query = (
+                        min_max_query.rstrip() + f"\n    WHERE {instance_filter_sql}"
+                    )
 
                 logger.info(f"Executando query temporal: {min_max_query}")
-                
+
                 # Executa usando psycopg2 diretamente
                 conn = psycopg2.connect(
                     host=datasource.connection.host,
@@ -160,7 +157,7 @@ class DashboardTemplate(models.Model):
                     password=datasource.connection.senha,
                     connect_timeout=10,
                 )
-                
+
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute(min_max_query)
                 result = cursor.fetchall()
@@ -174,34 +171,45 @@ class DashboardTemplate(models.Model):
                     metadata["temporal"] = {
                         "field": field,
                         "label": label,
-                        "min": str(row.get("min_value")) if row.get("min_value") else None,
-                        "max": str(row.get("max_value")) if row.get("max_value") else None,
+                        "min": (
+                            str(row.get("min_value")) if row.get("min_value") else None
+                        ),
+                        "max": (
+                            str(row.get("max_value")) if row.get("max_value") else None
+                        ),
                     }
             except Exception as e:
-                logger.error(f"Erro ao processar filtro temporal {field}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Erro ao processar filtro temporal {field}: {str(e)}",
+                    exc_info=True,
+                )
 
         # Processa filtros categóricos
         categorical_configs = self.filterable_fields.get("categorical", [])
         for cat_config in categorical_configs:
             field = cat_config.get("field")
             label = cat_config.get("label", field)
-            limit = cat_config.get("limit", 100)  # Limit para evitar queries muito grandes
+            limit = cat_config.get(
+                "limit", 100
+            )  # Limit para evitar queries muito grandes
 
             try:
                 import psycopg2
                 import psycopg2.extras
-                
+
                 # Query diretamente na base query
                 distinct_query = f"""
                     SELECT DISTINCT {field} as value
                     FROM ({datasource.sql}) AS base_data
                     WHERE {field} IS NOT NULL
                 """
-                
+
                 # Adiciona filtro de instância se existir
                 if instance_filter_sql:
-                    distinct_query = distinct_query.rstrip() + f"\n      AND {instance_filter_sql}"
-                
+                    distinct_query = (
+                        distinct_query.rstrip() + f"\n      AND {instance_filter_sql}"
+                    )
+
                 distinct_query += f"\n    ORDER BY {field}\n    LIMIT {limit}"
 
                 logger.info(f"Executando query categórica: {distinct_query}")
@@ -215,24 +223,31 @@ class DashboardTemplate(models.Model):
                     password=datasource.connection.senha,
                     connect_timeout=10,
                 )
-                
+
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute(distinct_query)
                 result = cursor.fetchall()
                 cursor.close()
                 conn.close()
 
-                logger.info(f"Resultado categórico: len(result)={len(result) if result else 0}")
+                logger.info(
+                    f"Resultado categórico: len(result)={len(result) if result else 0}"
+                )
 
                 if result:
                     values = [dict(row).get("value") for row in result]
-                    metadata["categorical"].append({
-                        "field": field,
-                        "label": label,
-                        "values": values,
-                    })
+                    metadata["categorical"].append(
+                        {
+                            "field": field,
+                            "label": label,
+                            "values": values,
+                        }
+                    )
             except Exception as e:
-                logger.error(f"Erro ao processar filtro categórico {field}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Erro ao processar filtro categórico {field}: {str(e)}",
+                    exc_info=True,
+                )
 
         return metadata
 
@@ -1784,19 +1799,19 @@ class DashboardBlock(models.Model):
     def format_x_axis_value(self, value):
         """
         Formata o valor do eixo X baseado na granularidade configurada.
-        
+
         Args:
             value: Valor bruto do eixo X (geralmente datetime ou string)
-            
+
         Returns:
             str: Valor formatado para exibição
         """
         from datetime import datetime
-        
+
         # Se não há granularidade ou valor vazio, retorna string direta
         if not self.x_axis_granularity or not value:
             return str(value)
-        
+
         # Tenta parsear como datetime
         try:
             if isinstance(value, str):
@@ -1810,29 +1825,29 @@ class DashboardBlock(models.Model):
                 else:
                     # Se nenhum formato funcionou, retorna string original
                     return str(value)
-            elif hasattr(value, 'strftime'):
+            elif hasattr(value, "strftime"):
                 dt = value
             else:
                 return str(value)
         except Exception:
             return str(value)
-        
+
         # Formata baseado na granularidade
         granularity = self.x_axis_granularity.lower()
-        
-        if granularity == 'hour':
-            return dt.strftime('%d/%m/%Y %H:00')
-        elif granularity == 'day':
-            return dt.strftime('%d/%m/%Y')
-        elif granularity == 'week':
+
+        if granularity == "hour":
+            return dt.strftime("%d/%m/%Y %H:00")
+        elif granularity == "day":
+            return dt.strftime("%d/%m/%Y")
+        elif granularity == "week":
             week_num = dt.isocalendar()[1]
             return f"Semana {week_num}, {dt.year}"
-        elif granularity == 'month':
-            return dt.strftime('%m/%Y')
-        elif granularity == 'quarter':
+        elif granularity == "month":
+            return dt.strftime("%m/%Y")
+        elif granularity == "quarter":
             quarter = (dt.month - 1) // 3 + 1
             return f"Q{quarter}/{dt.year}"
-        elif granularity == 'year':
+        elif granularity == "year":
             return str(dt.year)
         else:
             return str(value)
@@ -1880,9 +1895,11 @@ class DashboardBlock(models.Model):
         # Extrai valores únicos do eixo X e formata baseado na granularidade
         raw_x_values = sorted(list(set(row.get(x_field, "") for row in query_results)))
         x_values = [self.format_x_axis_value(val) for val in raw_x_values]
-        
+
         # Cria mapeamento de valor bruto -> valor formatado para lookup
-        x_value_map = {str(raw): formatted for raw, formatted in zip(raw_x_values, x_values)}
+        x_value_map = {
+            str(raw): formatted for raw, formatted in zip(raw_x_values, x_values)
+        }
 
         # Identifica se há série (QueryBuilder usa 'series_key')
         has_series = "series_key" in query_results[0]
@@ -1915,7 +1932,9 @@ class DashboardBlock(models.Model):
                     if len(self.y_axis_aggregations) == 1:
                         serie_label = series_key  # Ex: "Unidade São Paulo - Centro"
                     else:
-                        serie_label = f"{series_key} - {label}"  # Ex: "Unidade SP - Total"
+                        serie_label = (
+                            f"{series_key} - {label}"  # Ex: "Unidade SP - Total"
+                        )
                 else:
                     serie_label = label
 
