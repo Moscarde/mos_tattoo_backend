@@ -188,11 +188,12 @@ class DashboardBlockAdmin(admin.ModelAdmin):
         "chart_type",
         "datasource",
         "order",
+        "draft_status_badge",
         "layout_info",
         "ativo",
         "test_block",
     ]
-    list_filter = ["ativo", "chart_type", "template"]
+    list_filter = ["ativo", "is_draft", "chart_type", "template"]
     search_fields = ["title", "template__nome", "datasource__nome"]
     readonly_fields = [
         "id",
@@ -215,6 +216,7 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                     "chart_type",
                     "datasource",
                     "ativo",
+                    "is_draft",
                 ),
                 "description": "Configure as informações básicas do bloco.",
             },
@@ -231,6 +233,10 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                 "description": format_html(
                     "<div style='background: #d4edda; border-left: 4px solid #28a745; padding: 12px;'>"
                     "<strong>🚀 Semantic Layer - Queries Dinâmicas</strong><br/><br/>"
+                    "<strong>⚠️ Importante:</strong> Campos exibidos variam conforme o tipo de gráfico selecionado.<br/><br/>"
+                    "<strong>Para Métricas/KPI:</strong> Apenas 'Agregações Y' é necessário (eixo X fica oculto).<br/>"
+                    "<strong>Para Bar/Line/Area:</strong> Configure eixo X (categorias ou data) + agregações Y.<br/>"
+                    "<strong>Para Pizza:</strong> Configure eixo X (categorias) + agregações Y.<br/><br/>"
                     "<strong>Eixo X:</strong> Campo da query (ex: 'data_venda', 'produto')<br/>"
                     "<strong>Granularidade do Eixo X:</strong> Se for DATETIME, escolha: hour, day, week, month, quarter, year<br/>"
                     "<strong>Campo de Série:</strong> (Opcional) Para múltiplas séries (ex: 'unidade_nome')<br/>"
@@ -248,6 +254,37 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                     '  "axis": "y2"\n'
                     "}}]</pre>"
                     "<strong>Agregações disponíveis:</strong> sum, avg, count, count_distinct, min, max, median"
+                    "</div>"
+                ),
+            },
+        ),
+        (
+            "🔍 Filtro Específico do Bloco",
+            {
+                "fields": ("block_filter",),
+                "description": format_html(
+                    "<div style='background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 12px;'>"
+                    "<strong>💡 Filtro ao nível do bloco</strong><br/><br/>"
+                    "Permite criar múltiplos blocos da mesma fonte de dados com filtros diferentes, "
+                    "sem precisar duplicar o DataSource.<br/><br/>"
+                    "<strong>Exemplo 1:</strong> <code>status = 'cancelado'</code><br/>"
+                    "<strong>Exemplo 2:</strong> <code>status = 'ativo' AND payment_method = 'PIX'</code><br/><br/>"
+                    "⚠️ Use apenas cláusulas WHERE válidas (sem DDL/DML)."
+                    "</div>"
+                ),
+            },
+        ),
+        (
+            "📊 Configuração de Métrica/KPI",
+            {
+                "fields": ("metric_prefix", "metric_suffix", "metric_decimal_places"),
+                "description": format_html(
+                    "<div style='background: #f8d7da; border-left: 4px solid #dc3545; padding: 12px;'>"
+                    "<strong>📈 Formatação de Métricas</strong><br/><br/>"
+                    "Campos usados apenas quando o tipo de gráfico é 'Métrica/KPI'.<br/><br/>"
+                    "<strong>Prefixo:</strong> Texto exibido antes do valor (ex: 'R$ ', 'Total: ')<br/>"
+                    "<strong>Sufixo:</strong> Texto exibido depois do valor (ex: '%', ' vendas')<br/>"
+                    "<strong>Casas Decimais:</strong> Quantidade de dígitos após a vírgula (0-10)"
                     "</div>"
                 ),
             },
@@ -286,6 +323,56 @@ class DashboardBlockAdmin(admin.ModelAdmin):
         return f"{obj.col_span}x{obj.row_span}"
 
     layout_info.short_description = "Layout (WxH)"
+
+    def draft_status_badge(self, obj):
+        """Mostra badge de status do bloco (rascunho ou pronto)."""
+        if obj.is_draft:
+            return format_html(
+                '<span style="background: #ffc107; color: #000; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;">🟡 RASCUNHO</span>'
+            )
+        else:
+            is_complete, _ = obj.is_configuration_complete()
+            if is_complete:
+                return format_html(
+                    '<span style="background: #28a745; color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;">🟢 PRONTO</span>'
+                )
+            else:
+                return format_html(
+                    '<span style="background: #dc3545; color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;">🔴 INCOMPLETO</span>'
+                )
+
+    draft_status_badge.short_description = "Status"
+
+    actions = ["mark_as_ready", "mark_as_draft"]
+
+    def mark_as_ready(self, request, queryset):
+        """Marca blocos selecionados como prontos (valida antes)."""
+        success = 0
+        errors = []
+
+        for block in queryset:
+            try:
+                block.mark_as_ready()
+                success += 1
+            except Exception as e:
+                errors.append(f"{block.title}: {str(e)}")
+
+        if success > 0:
+            self.message_user(
+                request, f"{success} bloco(s) marcado(s) como pronto com sucesso."
+            )
+
+        if errors:
+            self.message_user(request, "Erros: " + "; ".join(errors), level="error")
+
+    mark_as_ready.short_description = "✅ Marcar selecionados como PRONTO"
+
+    def mark_as_draft(self, request, queryset):
+        """Marca blocos selecionados como rascunho."""
+        updated = queryset.update(is_draft=True)
+        self.message_user(request, f"{updated} bloco(s) marcado(s) como rascunho.")
+
+    mark_as_draft.short_description = "🟡 Marcar selecionados como RASCUNHO"
 
     def test_block(self, obj):
         """Link para testar o bloco."""

@@ -552,14 +552,26 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     "success": False,
                 }
 
+            # Monta configuração do chart
+            chart_config = {
+                "type": block.chart_type,
+                **block.config,  # Merge com configurações extras
+            }
+
+            # Adiciona configurações específicas de Métrica/KPI
+            if block.chart_type == "metric":
+                if block.metric_prefix:
+                    chart_config["metricPrefix"] = block.metric_prefix
+                if block.metric_suffix:
+                    chart_config["metricSuffix"] = block.metric_suffix
+                if block.metric_decimal_places is not None:
+                    chart_config["metricDecimalPlaces"] = block.metric_decimal_places
+
             # Retorna bloco com dados
             return {
                 "id": str(block.id),
                 "title": block.title,
-                "chart": {
-                    "type": block.chart_type,
-                    **block.config,  # Merge com configurações extras
-                },
+                "chart": chart_config,
                 "layout": {"colSpan": block.col_span, "rowSpan": block.row_span},
                 "data": result,
                 "success": True,

@@ -500,6 +500,142 @@
         });
     }
 
+    /**
+     * Mostra/esconde campos baseado no tipo de gráfico selecionado
+     */
+    function updateFieldsVisibilityByChartType() {
+        const chartType = $('#id_chart_type').val();
+        console.log('📊 Chart type alterado para:', chartType);
+
+        // Fieldsets e campos para controle de visibilidade
+        const semanticFieldset = $('.form-row.field-x_axis_field').closest('fieldset');
+        const metricFieldset = $('.form-row.field-metric_prefix').closest('fieldset');
+        
+        // Campos individuais da configuração semântica
+        const xAxisRow = $('.form-row.field-x_axis_field');
+        const granularityRow = $('.form-row.field-x_axis_granularity');
+        const seriesRow = $('.form-row.field-series_field');
+        const yAxisRow = $('.form-row.field-y_axis_aggregations');
+        
+        // Campos de métrica
+        const metricPrefixRow = $('.form-row.field-metric_prefix');
+        const metricSuffixRow = $('.form-row.field-metric_suffix');
+        const metricDecimalRow = $('.form-row.field-metric_decimal_places');
+
+        if (chartType === 'metric') {
+            // Tipo MÉTRICA/KPI
+            console.log('🎯 Configurando para tipo Métrica/KPI');
+            
+            // Métricas/KPIs exibem apenas UM valor total agregado
+            // Não precisam de eixo X (não há categorias/dimensões)
+            // Apenas precisam de agregação Y (qual valor calcular)
+            xAxisRow.hide();
+            granularityRow.hide();
+            seriesRow.hide();
+            
+            // Y axis é OBRIGATÓRIO (define qual métrica calcular)
+            yAxisRow.show();
+            
+            // Mostra campos específicos de métrica
+            metricFieldset.show();
+            metricPrefixRow.show();
+            metricSuffixRow.show();
+            metricDecimalRow.show();
+            
+        } else if (chartType === 'bar' || chartType === 'barh' || chartType === 'line' || chartType === 'area') {
+            // Tipos de gráfico com eixos X/Y tradicionais
+            console.log('📊 Configurando para tipo Bar/BarH/Line/Area');
+            
+            // Mostra todos os campos semânticos
+            xAxisRow.show();
+            seriesRow.show();
+            yAxisRow.show();
+            
+            // Granularidade é mostrada condicionalmente pelo updateGranularityField
+            // (se x_axis_field for datetime)
+            const xAxisSelect = $('#id_x_axis_field');
+            if (xAxisSelect.length && xAxisSelect[0].tagName === 'SELECT') {
+                const selectedMeta = xAxisSelect.find(':selected').data('meta');
+                updateGranularityField(selectedMeta);
+            }
+            
+            // Esconde fieldset e campos de métrica
+            metricFieldset.hide();
+            metricPrefixRow.hide();
+            metricSuffixRow.hide();
+            metricDecimalRow.hide();
+            
+        } else if (chartType === 'pie') {
+            // Tipo PIZZA
+            console.log('🍰 Configurando para tipo Pizza');
+            
+            // Pizza usa x_axis como categorias e y_axis como valores
+            xAxisRow.show();
+            yAxisRow.show();
+            
+            // Esconde campos não utilizados
+            granularityRow.hide();
+            seriesRow.hide();
+            
+            // Esconde fieldset e campos de métrica
+            metricFieldset.hide();
+            metricPrefixRow.hide();
+            metricSuffixRow.hide();
+            metricDecimalRow.hide();
+            
+        } else if (chartType === 'table') {
+            // Tipo TABELA
+            console.log('📋 Configurando para tipo Tabela');
+            
+            // Tabela pode usar todos os campos
+            xAxisRow.show();
+            yAxisRow.show();
+            seriesRow.show();
+            granularityRow.hide(); // Geralmente não usa granularidade
+            
+            // Esconde fieldset e campos de métrica
+            metricFieldset.hide();
+            metricPrefixRow.hide();
+            metricSuffixRow.hide();
+            metricDecimalRow.hide();
+            
+        } else {
+            // Tipo desconhecido ou não selecionado - mostra campos semânticos, esconde métrica
+            console.log('❓ Tipo desconhecido, mostrando campos padrão');
+            
+            xAxisRow.show();
+            yAxisRow.show();
+            seriesRow.show();
+            granularityRow.hide();
+            
+            // Esconde fieldset e campos de métrica por padrão
+            metricFieldset.hide();
+            metricPrefixRow.hide();
+            metricSuffixRow.hide();
+            metricDecimalRow.hide();
+        }
+    }
+
+    /**
+     * Configura listener para mudanças no campo chart_type
+     */
+    function setupChartTypeListener() {
+        const chartTypeSelect = $('#id_chart_type');
+        
+        if (!chartTypeSelect.length) {
+            console.log('⚠️ Campo chart_type não encontrado');
+            return;
+        }
+        
+        console.log('✅ Configurando listener para chart_type');
+        
+        // Listener para mudanças
+        chartTypeSelect.on('change', updateFieldsVisibilityByChartType);
+        
+        // Executa imediatamente para configurar estado inicial
+        updateFieldsVisibilityByChartType();
+    }
+
     // Inicializa quando o DOM estiver pronto
     $(document).ready(function () {
         console.log('📄 DOM pronto, aguardando carregamento do Django Admin...');
@@ -507,6 +643,7 @@
         // Aguarda um pouco para garantir que o admin do Django carregou
         setTimeout(() => {
             console.log('⏰ Timeout completado, iniciando setup...');
+            setupChartTypeListener();
             setupDataSourceListener();
             initDynamicFields();
         }, 500);

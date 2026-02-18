@@ -245,7 +245,7 @@ class QueryBuilder:
 
     def build_analytical_query(
         self,
-        x_axis_field: str,
+        x_axis_field: Optional[str] = None,
         x_axis_granularity: Optional[str] = None,
         y_axis_metrics: Optional[List[Dict[str, str]]] = None,
         series_field: Optional[str] = None,
@@ -257,7 +257,7 @@ class QueryBuilder:
         Gera query analítica completa.
 
         Args:
-            x_axis_field: Campo do eixo X
+            x_axis_field: Campo do eixo X (opcional - se None, faz agregação total sem agrupamento)
             x_axis_granularity: Granularidade temporal (se aplicável)
             y_axis_metrics: Lista de métricas do eixo Y
                 Formato: [{"field": "revenue", "aggregation": "sum", "label": "Total"}]
@@ -267,9 +267,10 @@ class QueryBuilder:
                     "date_start": "2024-01-01",
                     "date_end": "2024-12-31",
                     "dimensions": {"category": ["A", "B"]},
-                    "custom": "status = 'active'"
+                    "custom": "status = 'active'",
+                    "block_filter": "status = 'ativo'"
                 }
-            order_by: Campo para ordenação (padrão: metric_date)
+            order_by: Campo para ordenação (padrão: metric_date, None se sem eixo X)
             limit: Limite de registros (opcional)
 
         Returns:
@@ -277,8 +278,8 @@ class QueryBuilder:
         """
         y_axis_metrics = y_axis_metrics or []
 
-        # Valida campos
-        if not self.validate_column(x_axis_field):
+        # Valida campos (x_axis_field é opcional para métricas simples)
+        if x_axis_field and not self.validate_column(x_axis_field):
             raise ValueError(f"Campo do eixo X '{x_axis_field}' não existe no dataset")
 
         if series_field and not self.validate_column(series_field):
@@ -298,7 +299,7 @@ class QueryBuilder:
                 )
 
         # Valida granularidade
-        if x_axis_granularity:
+        if x_axis_granularity and x_axis_field:
             if not self.validate_granularity(x_axis_field, x_axis_granularity):
                 raise ValueError(
                     f"Granularidade '{x_axis_granularity}' não permitida para '{x_axis_field}'"
@@ -307,15 +308,19 @@ class QueryBuilder:
         # Monta SELECT com aliases padronizados
         select_parts = []
 
-        # Eixo X (com ou sem granularidade)
-        x_metadata = self.get_column_metadata(x_axis_field)
-        if x_metadata.semantic_type == SemanticType.DATETIME and x_axis_granularity:
-            trunc_format = TimeGranularity.get_date_trunc_format(x_axis_granularity)
-            select_parts.append(
-                f"DATE_TRUNC('{trunc_format}', {x_axis_field}) AS metric_date"
-            )
+        # Eixo X (com ou sem granularidade) - OPCIONAL para métricas simples
+        if x_axis_field:
+            x_metadata = self.get_column_metadata(x_axis_field)
+            if x_metadata.semantic_type == SemanticType.DATETIME and x_axis_granularity:
+                trunc_format = TimeGranularity.get_date_trunc_format(x_axis_granularity)
+                select_parts.append(
+                    f"DATE_TRUNC('{trunc_format}', {x_axis_field}) AS metric_date"
+                )
+            else:
+                select_parts.append(f"{x_axis_field} AS metric_date")
         else:
-            select_parts.append(f"{x_axis_field} AS metric_date")
+            # Para métricas sem eixo X, usa valor fixo para compatibilidade com formato de resposta
+            select_parts.append("'Total' AS metric_date")
 
         # Métricas do eixo Y
         for idx, metric in enumerate(y_axis_metrics):
@@ -351,14 +356,15 @@ class QueryBuilder:
 
         if filters:
             # Filtro de data (formato antigo, mantido por compatibilidade)
+            # Apenas aplicável se houver eixo X (para métricas simples, não há eixo temporal)
             date_start = filters.get("date_start")
             date_end = filters.get("date_end")
 
-            if date_start:
+            if x_axis_field and date_start:
                 where_clauses.append(f"{x_axis_field} >= %(date_start)s")
                 params["date_start"] = date_start
 
-            if date_end:
+            if x_axis_field and date_end:
                 where_clauses.append(f"{x_axis_field} <= %(date_end)s")
                 params["date_end"] = date_end
 
@@ -411,19 +417,32 @@ class QueryBuilder:
                 # não do usuário final
                 where_clauses.append(f"({custom_filter})")
 
+            # Filtro específico do bloco (block_filter)
+            # Permite criar múltiplos blocos da mesma fonte com filtros diferentes
+            block_filter = filters.get("block_filter")
+            if block_filter:
+                # IMPORTANTE: Este filtro vem de configuração confiável (admin)
+                # não do usuário final
+                where_clauses.append(f"({block_filter})")
+
         if where_clauses:
             query_parts.append("WHERE")
             query_parts.append("  " + "\n  AND ".join(where_clauses))
 
-        # GROUP BY
-        group_by_parts = ["metric_date"]
+        # GROUP BY (apenas se houver dimensões para agrupar)
+        group_by_parts = []
+        if x_axis_field:
+            group_by_parts.append("metric_date")
         if series_field:
             group_by_parts.append("series_key")
 
-        query_parts.append("GROUP BY " + ", ".join(group_by_parts))
+        if group_by_parts:
+            query_parts.append("GROUP BY " + ", ".join(group_by_parts))
+        # Se não há GROUP BY, é agregação total (métricas simples)
 
         # ORDER BY
-        if order_by:
+        if order_by and x_axis_field:
+            # Só ordena se houver eixo X (senão é só um registro)
             query_parts.append(f"ORDER BY {order_by}")
 
         # LIMIT

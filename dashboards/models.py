@@ -1522,6 +1522,7 @@ class DashboardBlock(models.Model):
 
     # Tipos de gráficos suportados
     CHART_TYPE_BAR = "bar"
+    CHART_TYPE_BARH = "barh"
     CHART_TYPE_LINE = "line"
     CHART_TYPE_PIE = "pie"
     CHART_TYPE_AREA = "area"
@@ -1529,7 +1530,8 @@ class DashboardBlock(models.Model):
     CHART_TYPE_METRIC = "metric"
 
     CHART_TYPE_CHOICES = [
-        (CHART_TYPE_BAR, "Gráfico de Barras"),
+        (CHART_TYPE_BAR, "Gráfico de Barras Verticais"),
+        (CHART_TYPE_BARH, "Gráfico de Barras Horizontais"),
         (CHART_TYPE_LINE, "Gráfico de Linhas"),
         (CHART_TYPE_PIE, "Gráfico de Pizza"),
         (CHART_TYPE_AREA, "Gráfico de Área"),
@@ -1674,11 +1676,58 @@ class DashboardBlock(models.Model):
         help_text="Configurações adicionais (cores, legendas, tooltips, etc). Formato JSON livre",
     )
 
+    # ========================================================================
+    # FILTRO ESPECÍFICO DO BLOCO
+    # ========================================================================
+
+    block_filter = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Filtro SQL do Bloco",
+        help_text="""Filtro WHERE específico deste bloco (ex: "status = 'cancelado' AND payment_method = 'PIX'").
+        Permite criar blocos diferentes da mesma fonte de dados sem duplicar o DataSource.
+        Este filtro é combinado (AND) com filtros dinâmicos e filtros da instância.""",
+    )
+
+    # ========================================================================
+    # CONFIGURAÇÕES ESPECÍFICAS DE MÉTRICA/KPI
+    # ========================================================================
+
+    metric_prefix = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        verbose_name="Prefixo da Métrica",
+        help_text="Texto exibido antes do valor (ex: 'R$ ', 'Total: '). Usado apenas em gráficos tipo Métrica/KPI.",
+    )
+
+    metric_suffix = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        verbose_name="Sufixo da Métrica",
+        help_text="Texto exibido depois do valor (ex: '%', ' vendas', ' clientes'). Usado apenas em gráficos tipo Métrica/KPI.",
+    )
+
+    metric_decimal_places = models.IntegerField(
+        null=True,
+        blank=True,
+        default=0,
+        verbose_name="Casas Decimais",
+        help_text="Número de casas decimais para exibir (0-10). Usado apenas em gráficos tipo Métrica/KPI.",
+    )
+
     # Status
     ativo = models.BooleanField(
         default=True,
         verbose_name="Ativo",
         help_text="Se False, o bloco não será exibido",
+    )
+
+    is_draft = models.BooleanField(
+        default=True,
+        verbose_name="Rascunho",
+        help_text="Se True, o bloco está em construção e pode ter configurações incompletas. Marque como 'Pronto' quando finalizar a configuração.",
     )
 
     # Timestamps
@@ -1701,7 +1750,9 @@ class DashboardBlock(models.Model):
         """
         Valida a configuração do bloco.
         """
-        from django.core.exceptions import ValidationError
+        import re
+
+        from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 
         errors = {}
 
@@ -1739,8 +1790,86 @@ class DashboardBlock(models.Model):
                         )
                         break
 
+        # Valida block_filter (filtro SQL específico do bloco)
+        if self.block_filter and self.block_filter.strip():
+            # Lista de comandos SQL perigosos (evita DDL/DML)
+            dangerous_patterns = [
+                r'\bDROP\b', r'\bDELETE\b', r'\bTRUNCATE\b', r'\bUPDATE\b',
+                r'\bINSERT\b', r'\bALTER\b', r'\bCREATE\b', r'\bEXEC\b',
+                r'\bEXECUTE\b', r'\b;\s*DROP\b', r'\b;\s*DELETE\b'
+            ]
+            
+            filter_upper = self.block_filter.upper()
+            for pattern in dangerous_patterns:
+                if re.search(pattern, filter_upper, re.IGNORECASE):
+                    errors["block_filter"] = (
+                        f"Filtro contém comando SQL não permitido. "
+                        f"Use apenas cláusulas WHERE válidas (ex: status = 'ativo' AND tipo = 'venda')."
+                    )
+                    break
+
+        # Valida metric_decimal_places
+        if self.metric_decimal_places is not None:
+            if not (0 <= self.metric_decimal_places <= 10):
+                errors["metric_decimal_places"] = "Casas decimais devem estar entre 0 e 10"
+
+        # NOTA: Validação de configuração completa (eixo X, agregações Y) é feita
+        # apenas na EXECUÇÃO (execute_query/get_data), não no salvamento.
+        # Isso permite criar blocos incrementalmente via inline formsets sem erros prematuros.
+        # Erros de configuração incompleta aparecem no preview/teste do bloco.
+        # Use is_configuration_complete() para validar antes de marcar como pronto.
+
+        # Aviso se campos de métrica preenchidos mas chart_type != 'metric'
+        if self.chart_type != self.CHART_TYPE_METRIC:
+            metric_fields_filled = [
+                field for field in [self.metric_prefix, self.metric_suffix]
+                if field and field.strip()
+            ]
+            if metric_fields_filled or (self.metric_decimal_places is not None and self.metric_decimal_places != 0):
+                # Não bloqueia, apenas aviso no futuro (podemos adicionar warnings se necessário)
+                pass
+
         if errors:
             raise ValidationError(errors)
+
+    def is_configuration_complete(self):
+        """
+        Verifica se a configuração do bloco está completa e válida.
+        
+        Returns:
+            tuple: (is_complete: bool, errors: list[str])
+        """
+        errors = []
+        
+        # Verifica agregações Y
+        if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
+            errors.append("Configure pelo menos uma agregação Y (ex: sum, count, avg)")
+        
+        # Verifica eixo X para gráficos não-métricos
+        if self.chart_type != self.CHART_TYPE_METRIC:
+            if not self.x_axis_field or not self.x_axis_field.strip():
+                errors.append(f"Gráficos tipo '{self.get_chart_type_display()}' exigem um campo para o eixo X")
+        
+        return (len(errors) == 0, errors)
+
+    def mark_as_ready(self):
+        """
+        Marca o bloco como pronto (não-rascunho) após validar configuração.
+        
+        Raises:
+            ValidationError: Se configuração estiver incompleta
+        """
+        from django.core.exceptions import ValidationError
+        
+        is_complete, errors = self.is_configuration_complete()
+        
+        if not is_complete:
+            raise ValidationError({
+                '__all__': ["Não é possível marcar como pronto. Erros encontrados:"] + errors
+            })
+        
+        self.is_draft = False
+        self.save(update_fields=['is_draft'])
 
     # ========================================================================
     # SEMANTIC LAYER METHODS
@@ -1772,21 +1901,28 @@ class DashboardBlock(models.Model):
                 }
             )
 
+        # Para métricas/KPIs sem eixo X, passa None (agregação total)
+        x_field = self.x_axis_field if self.x_axis_field and self.x_axis_field.strip() else None
+        
         params = {
-            "x_axis_field": self.x_axis_field,
+            "x_axis_field": x_field,
             "x_axis_granularity": (
                 self.x_axis_granularity if self.x_axis_granularity else None
             ),
             "y_axis_metrics": y_axis_metrics,
             "series_field": self.series_field if self.series_field else None,
             "filters": {},
-            "order_by": "metric_date",
+            "order_by": "metric_date" if x_field else None,  # Sem eixo X, não ordena
             "limit": 1000,
         }
 
-        # Filtros SQL (se configurado em config)
+        # Filtros SQL (se configurado em config) - DEPRECATED, usar block_filter
         if self.config.get("filter_sql"):
             params["filters"]["where_clause"] = self.config["filter_sql"]
+
+        # Filtro específico do bloco (novo)
+        if self.block_filter and self.block_filter.strip():
+            params["filters"]["block_filter"] = self.block_filter.strip()
 
         # Adiciona filtros dinâmicos aplicados
         if applied_filters:
@@ -2061,4 +2197,5 @@ class DashboardBlock(models.Model):
         return {
             "x": x_values,
             "series": series_list,
+        }
         }
