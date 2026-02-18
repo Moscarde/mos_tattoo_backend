@@ -1861,14 +1861,14 @@ class DashboardBlock(models.Model):
                     "Para tabelas, o campo 'Legenda (série)' é obrigatório. "
                     "Ele define a coluna de agrupamento (ex: seller_name, product_name)."
                 )
-            
+
             # y_axis_aggregations deve ter pelo menos uma métrica
             if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
                 errors["y_axis_aggregations"] = (
                     "Para tabelas, configure pelo menos uma métrica para exibir como coluna "
                     "(ex: SUM(total_value), AVG(price), COUNT(*))."
                 )
-            
+
             # x_axis_field não é usado em tabelas - adiciona warning/limpeza
             if self.x_axis_field and self.x_axis_field.strip():
                 # Não adiciona erro, mas podemos adicionar warning no futuro
@@ -1946,7 +1946,9 @@ class DashboardBlock(models.Model):
     # SEMANTIC LAYER METHODS
     # ========================================================================
 
-    def get_analytical_query_params(self, applied_filters=None, instance_filter_sql=None):
+    def get_analytical_query_params(
+        self, applied_filters=None, instance_filter_sql=None
+    ):
         """
         Converte a configuração do bloco para parâmetros do execute_analytical_query().
 
@@ -2090,8 +2092,7 @@ class DashboardBlock(models.Model):
 
         # Obtém parâmetros analíticos com filtros aplicados
         params = self.get_analytical_query_params(
-            applied_filters=applied_filters,
-            instance_filter_sql=instance_filter_sql
+            applied_filters=applied_filters, instance_filter_sql=instance_filter_sql
         )
 
         # Executa query através do DataSource
@@ -2116,8 +2117,7 @@ class DashboardBlock(models.Model):
                    Se success=False, data é mensagem de erro (str)
         """
         success, raw_data = self.execute_query(
-            applied_filters=applied_filters,
-            instance_filter_sql=instance_filter_sql
+            applied_filters=applied_filters, instance_filter_sql=instance_filter_sql
         )
 
         if not success:
@@ -2129,7 +2129,7 @@ class DashboardBlock(models.Model):
             normalized_data = self.normalize_table_results(raw_data)
         else:
             normalized_data = self.normalize_query_results(raw_data)
-        
+
         return True, normalized_data
 
     def format_x_axis_value(self, value):
@@ -2349,51 +2349,47 @@ class DashboardBlock(models.Model):
 
         # Monta definição de colunas
         columns = []
-        
+
         # Primeira coluna: dimensão de agrupamento (series_key)
         if "series_key" in query_results[0]:
             # Usa series_label (nome amigável) se definido, senão usa series_field, senão "Dimensão"
             dimension_label = (
-                self.series_label 
+                self.series_label
                 if self.series_label and self.series_label.strip()
                 else self.series_field or "Dimensão"
             )
-            columns.append({
-                "field": "series_key",
-                "label": dimension_label,
-                "type": "string"
-            })
-        
+            columns.append(
+                {"field": "series_key", "label": dimension_label, "type": "string"}
+            )
+
         # Demais colunas: métricas do y_axis_aggregations
         for idx, agg_config in enumerate(self.y_axis_aggregations):
             label = agg_config.get("label", agg_config.get("field"))
             alias = f"metric_value_{idx + 1}"
-            
-            columns.append({
-                "field": alias,
-                "label": label,
-                "type": "number"  # Métricas agregadas são sempre numéricas
-            })
-        
+
+            columns.append(
+                {
+                    "field": alias,
+                    "label": label,
+                    "type": "number",  # Métricas agregadas são sempre numéricas
+                }
+            )
+
         # Monta linhas como array de arrays
         rows = []
         for row in query_results:
             row_values = []
-            
+
             # Adiciona valor da dimensão (series_key)
             if "series_key" in row:
                 row_values.append(row.get("series_key"))
-            
+
             # Adiciona valores das métricas
             for idx in range(len(self.y_axis_aggregations)):
                 alias = f"metric_value_{idx + 1}"
                 value = row.get(alias)
                 row_values.append(value)
-            
-            rows.append(row_values)
-        
-        return {
-            "columns": columns,
-            "rows": rows
-        }
 
+            rows.append(row_values)
+
+        return {"columns": columns, "rows": rows}

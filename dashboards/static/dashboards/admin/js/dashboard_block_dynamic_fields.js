@@ -597,11 +597,11 @@
             // Tabela NÃO usa x_axis (é ignorado pelo QueryBuilder)
             xAxisRow.hide();
             granularityRow.hide();
-            
+
             // series_field é OBRIGATÓRIO para tabelas (define as linhas)
             seriesRow.show();
             seriesLabelRow.show();  // Label amigável para a coluna de agrupamento
-            
+
             // y_axis define as colunas (métricas)
             yAxisRow.show();
 
@@ -610,7 +610,7 @@
             metricPrefixRow.hide();
             metricSuffixRow.hide();
             metricDecimalRow.hide();
-            
+
             // Adiciona mensagem de ajuda contextual para tabelas
             const seriesLabel = seriesRow.find('label.required');
             if (seriesLabel.length && !seriesLabel.find('.table-help-text').length) {

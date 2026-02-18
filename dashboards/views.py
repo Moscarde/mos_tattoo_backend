@@ -542,7 +542,9 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             # Aplica filtro global da instância (ex: unit_code = 'SP-01') a todos os blocos
             success, result = block.get_data(
                 applied_filters=applied_filters,
-                instance_filter_sql=dashboard_instance.filtro_sql if dashboard_instance else None
+                instance_filter_sql=(
+                    dashboard_instance.filtro_sql if dashboard_instance else None
+                ),
             )
 
             if not success:

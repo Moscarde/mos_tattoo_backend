@@ -282,7 +282,7 @@ class QueryBuilder:
             Tupla (query_sql, params_dict)
         """
         y_axis_metrics = y_axis_metrics or []
-        
+
         # Para tabelas, ignora x_axis_field e ajusta lógica
         is_table_chart = chart_type == "table"
         if is_table_chart:
@@ -463,7 +463,7 @@ class QueryBuilder:
         # Para tabelas, usa series_key como padrão se não especificado
         if is_table_chart and series_field and not order_by:
             order_by = "series_key"
-        
+
         if order_by:
             # Aplica ordenação se especificada
             query_parts.append(f"ORDER BY {order_by}")
