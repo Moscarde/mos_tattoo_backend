@@ -1677,7 +1677,7 @@ class DashboardBlock(models.Model):
     )
 
     # ========================================================================
-    # FILTRO ESPECÍFICO DO BLOCO
+    # FILTRO E ORDENAÇÃO ESPECÍFICA DO BLOCO
     # ========================================================================
 
     block_filter = models.TextField(
@@ -1687,6 +1687,16 @@ class DashboardBlock(models.Model):
         help_text="""Filtro WHERE específico deste bloco (ex: "status = 'cancelado' AND payment_method = 'PIX'").
         Permite criar blocos diferentes da mesma fonte de dados sem duplicar o DataSource.
         Este filtro é combinado (AND) com filtros dinâmicos e filtros da instância.""",
+    )
+
+    block_order_by = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        verbose_name="Ordenação do Bloco",
+        help_text="""Campos para ORDER BY (ex: "total_vendas DESC" ou "data_venda, unidade_id").
+        Você pode inserir 1 ou mais campos separados por vírgula.
+        Exemplo: "total_vendas DESC, data_venda ASC"""
     )
 
     # ========================================================================
@@ -1904,6 +1914,14 @@ class DashboardBlock(models.Model):
         # Para métricas/KPIs sem eixo X, passa None (agregação total)
         x_field = self.x_axis_field if self.x_axis_field and self.x_axis_field.strip() else None
         
+        # Ordenação: usa block_order_by se definido, senão padrão "metric_date"
+        if self.block_order_by and self.block_order_by.strip():
+            order_by = self.block_order_by.strip()
+        elif x_field:
+            order_by = "metric_date"  # Padrão se tiver eixo X
+        else:
+            order_by = None  # Sem eixo X, não ordena
+        
         params = {
             "x_axis_field": x_field,
             "x_axis_granularity": (
@@ -1912,7 +1930,7 @@ class DashboardBlock(models.Model):
             "y_axis_metrics": y_axis_metrics,
             "series_field": self.series_field if self.series_field else None,
             "filters": {},
-            "order_by": "metric_date" if x_field else None,  # Sem eixo X, não ordena
+            "order_by": order_by,
             "limit": 1000,
         }
 
@@ -2121,8 +2139,16 @@ class DashboardBlock(models.Model):
         # QueryBuilder sempre usa 'metric_date' para o eixo X
         x_field = "metric_date"
 
-        # Extrai valores únicos do eixo X e formata baseado na granularidade
-        raw_x_values = sorted(list(set(row.get(x_field, "") for row in query_results)))
+        # Extrai valores únicos do eixo X mantendo a ORDEM da query (não ordena alfabeticamente)
+        # A query já vem ordenada pelo ORDER BY, então respeitamos essa ordem
+        seen = set()
+        raw_x_values = []
+        for row in query_results:
+            x_val = row.get(x_field, "")
+            if x_val not in seen:
+                seen.add(x_val)
+                raw_x_values.append(x_val)
+        
         x_values = [self.format_x_axis_value(val) for val in raw_x_values]
 
         # Cria mapeamento de valor bruto -> valor formatado para lookup
@@ -2180,8 +2206,9 @@ class DashboardBlock(models.Model):
                 series_data[series_key][serie_label]["values_dict"][x_val] = value
 
         # Converte para formato final
+        # Mantém a ordem de inserção (primeira aparição na query)
         series_list = []
-        for series_key in sorted(series_data.keys()):
+        for series_key in series_data.keys():  # Respeita ORDER BY da query
             for serie_label, serie_info in series_data[series_key].items():
                 # Preenche valores na ordem do eixo X (None para valores faltantes)
                 values = [serie_info["values_dict"].get(x_val) for x_val in x_values]
@@ -2197,5 +2224,4 @@ class DashboardBlock(models.Model):
         return {
             "x": x_values,
             "series": series_list,
-        }
         }

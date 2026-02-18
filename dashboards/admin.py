@@ -259,16 +259,20 @@ class DashboardBlockAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "🔍 Filtro Específico do Bloco",
+            "🔍 Filtro e Ordenação do bloco",
             {
-                "fields": ("block_filter",),
+                "fields": ("block_filter", "block_order_by"),
                 "description": format_html(
                     "<div style='background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 12px;'>"
-                    "<strong>💡 Filtro ao nível do bloco</strong><br/><br/>"
-                    "Permite criar múltiplos blocos da mesma fonte de dados com filtros diferentes, "
+                    "<strong>💡 Filtro e Ordenação ao nível do bloco</strong><br/><br/>"
+                    "Permite criar múltiplos blocos da mesma fonte de dados com filtros e ordenações diferentes, "
                     "sem precisar duplicar o DataSource.<br/><br/>"
-                    "<strong>Exemplo 1:</strong> <code>status = 'cancelado'</code><br/>"
-                    "<strong>Exemplo 2:</strong> <code>status = 'ativo' AND payment_method = 'PIX'</code><br/><br/>"
+                    "<strong>Filtro SQL - Exemplos:</strong><br/>"
+                    "<code>status = 'cancelado'</code><br/>"
+                    "<code>status = 'ativo' AND payment_method = 'PIX'</code><br/><br/>"
+                    "<strong>Ordenação - Exemplos:</strong><br/>"
+                    "<code>total_vendas DESC</code><br/>"
+                    "<code>data_venda DESC, unidade_id ASC</code><br/><br/>"
                     "⚠️ Use apenas cláusulas WHERE válidas (sem DDL/DML)."
                     "</div>"
                 ),

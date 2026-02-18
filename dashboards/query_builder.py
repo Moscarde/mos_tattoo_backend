@@ -441,8 +441,8 @@ class QueryBuilder:
         # Se não há GROUP BY, é agregação total (métricas simples)
 
         # ORDER BY
-        if order_by and x_axis_field:
-            # Só ordena se houver eixo X (senão é só um registro)
+        if order_by:
+            # Aplica ordenação se especificada
             query_parts.append(f"ORDER BY {order_by}")
 
         # LIMIT

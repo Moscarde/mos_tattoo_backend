@@ -158,6 +158,7 @@ class DashboardBlockSerializer(serializers.ModelSerializer):
             "series_field",
             "y_axis_aggregations",
             "block_filter",
+            "block_order_by",
             "metric_prefix",
             "metric_suffix",
             "metric_decimal_places",
