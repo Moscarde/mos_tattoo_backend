@@ -539,7 +539,11 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         try:
             # Executa query usando Semantic Layer com filtros
-            success, result = block.get_data(applied_filters=applied_filters)
+            # Aplica filtro global da instância (ex: unit_code = 'SP-01') a todos os blocos
+            success, result = block.get_data(
+                applied_filters=applied_filters,
+                instance_filter_sql=dashboard_instance.filtro_sql if dashboard_instance else None
+            )
 
             if not success:
                 return {

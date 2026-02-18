@@ -507,6 +507,9 @@
         const chartType = $('#id_chart_type').val();
         console.log('📊 Chart type alterado para:', chartType);
 
+        // Limpa mensagens de ajuda contextuais anteriores
+        $('.table-help-text').remove();
+
         // Fieldsets e campos para controle de visibilidade
         const semanticFieldset = $('.form-row.field-x_axis_field').closest('fieldset');
         const metricFieldset = $('.form-row.field-metric_prefix').closest('fieldset');
@@ -515,6 +518,7 @@
         const xAxisRow = $('.form-row.field-x_axis_field');
         const granularityRow = $('.form-row.field-x_axis_granularity');
         const seriesRow = $('.form-row.field-series_field');
+        const seriesLabelRow = $('.form-row.field-series_label');
         const yAxisRow = $('.form-row.field-y_axis_aggregations');
 
         // Campos de métrica
@@ -532,6 +536,7 @@
             xAxisRow.hide();
             granularityRow.hide();
             seriesRow.hide();
+            seriesLabelRow.hide();
 
             // Y axis é OBRIGATÓRIO (define qual métrica calcular)
             yAxisRow.show();
@@ -549,6 +554,7 @@
             // Mostra todos os campos semânticos
             xAxisRow.show();
             seriesRow.show();
+            seriesLabelRow.show();
             yAxisRow.show();
 
             // Granularidade é mostrada condicionalmente pelo updateGranularityField
@@ -576,6 +582,7 @@
             // Esconde campos não utilizados
             granularityRow.hide();
             seriesRow.hide();
+            seriesLabelRow.hide();
 
             // Esconde fieldset e campos de métrica
             metricFieldset.hide();
@@ -587,17 +594,32 @@
             // Tipo TABELA
             console.log('📋 Configurando para tipo Tabela');
 
-            // Tabela pode usar todos os campos
-            xAxisRow.show();
-            yAxisRow.show();
+            // Tabela NÃO usa x_axis (é ignorado pelo QueryBuilder)
+            xAxisRow.hide();
+            granularityRow.hide();
+            
+            // series_field é OBRIGATÓRIO para tabelas (define as linhas)
             seriesRow.show();
-            granularityRow.hide(); // Geralmente não usa granularidade
+            seriesLabelRow.show();  // Label amigável para a coluna de agrupamento
+            
+            // y_axis define as colunas (métricas)
+            yAxisRow.show();
 
             // Esconde fieldset e campos de métrica
             metricFieldset.hide();
             metricPrefixRow.hide();
             metricSuffixRow.hide();
             metricDecimalRow.hide();
+            
+            // Adiciona mensagem de ajuda contextual para tabelas
+            const seriesLabel = seriesRow.find('label.required');
+            if (seriesLabel.length && !seriesLabel.find('.table-help-text').length) {
+                seriesLabel.append(
+                    '<span class="table-help-text" style="color: #d9534f; font-weight: bold; margin-left: 8px;">' +
+                    '(Define as linhas da tabela - OBRIGATÓRIO para tabelas)' +
+                    '</span>'
+                );
+            }
 
         } else {
             // Tipo desconhecido ou não selecionado - mostra campos semânticos, esconde métrica
@@ -606,6 +628,7 @@
             xAxisRow.show();
             yAxisRow.show();
             seriesRow.show();
+            seriesLabelRow.show();
             granularityRow.hide();
 
             // Esconde fieldset e campos de métrica por padrão

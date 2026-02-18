@@ -228,6 +228,7 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                     "x_axis_field",
                     "x_axis_granularity",
                     "series_field",
+                    "series_label",
                     "y_axis_aggregations",
                 ),
                 "description": format_html(
@@ -236,10 +237,11 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                     "<strong>⚠️ Importante:</strong> Campos exibidos variam conforme o tipo de gráfico selecionado.<br/><br/>"
                     "<strong>Para Métricas/KPI:</strong> Apenas 'Agregações Y' é necessário (eixo X fica oculto).<br/>"
                     "<strong>Para Bar/Line/Area:</strong> Configure eixo X (categorias ou data) + agregações Y.<br/>"
-                    "<strong>Para Pizza:</strong> Configure eixo X (categorias) + agregações Y.<br/><br/>"
+                    "<strong>Para Pizza:</strong> Configure eixo X (categorias) + agregações Y.<br/>"
+                    "<strong>Para Tabela:</strong> Configure 'Legenda (série)' como coluna de agrupamento + 'Agregações Y' como métricas (colunas da tabela). Eixo X é ignorado.<br/><br/>"
                     "<strong>Eixo X:</strong> Campo da query (ex: 'data_venda', 'produto')<br/>"
                     "<strong>Granularidade do Eixo X:</strong> Se for DATETIME, escolha: hour, day, week, month, quarter, year<br/>"
-                    "<strong>Campo de Série:</strong> (Opcional) Para múltiplas séries (ex: 'unidade_nome')<br/>"
+                    "<strong>Campo de Série (Legenda):</strong> (Opcional) Para múltiplas séries (ex: 'unidade_nome'). <span style='color: #d9534f; font-weight: bold;'>Para TABELA: Campo OBRIGATÓRIO que define as linhas (ex: 'seller_name', 'product_name')</span><br/>"
                     "<strong>Agregações do Eixo Y:</strong> Formato JSON:<br/>"
                     "<pre>[{{\n"
                     '  "field": "valor_venda",\n'
@@ -253,6 +255,7 @@ class DashboardBlockAdmin(admin.ModelAdmin):
                     '  "label": "Ticket Médio",\n'
                     '  "axis": "y2"\n'
                     "}}]</pre>"
+                    "<strong>Para TABELA:</strong> Cada agregação será uma coluna da tabela.<br/>"
                     "<strong>Agregações disponíveis:</strong> sum, avg, count, count_distinct, min, max, median"
                     "</div>"
                 ),

@@ -966,6 +966,7 @@ class DataSource(models.Model):
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = "metric_date",
         limit: Optional[int] = None,
+        chart_type: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Gera query analítica usando o QueryBuilder.
@@ -981,6 +982,7 @@ class DataSource(models.Model):
             filters: Filtros estruturados
             order_by: Campo de ordenação
             limit: Limite de registros
+            chart_type: Tipo de gráfico (opcional, para ajustes na query)
 
         Returns:
             Tupla (query_sql, params_dict)
@@ -997,6 +999,7 @@ class DataSource(models.Model):
             filters=filters,
             order_by=order_by,
             limit=limit,
+            chart_type=chart_type,
         )
 
     def execute_analytical_query(
@@ -1009,6 +1012,7 @@ class DataSource(models.Model):
         order_by: Optional[str] = "metric_date",
         limit: Optional[int] = None,
         timeout: int = 30,
+        chart_type: Optional[str] = None,
     ) -> Tuple[bool, Any]:
         """
         Gera e executa query analítica.
@@ -1016,6 +1020,7 @@ class DataSource(models.Model):
         Args:
             (mesmos de build_analytical_query)
             timeout: Timeout em segundos
+            chart_type: Tipo de gráfico (opcional, para ajustes na query)
 
         Returns:
             Tupla (success: bool, data_or_error: list|str)
@@ -1034,6 +1039,7 @@ class DataSource(models.Model):
                 filters=filters,
                 order_by=order_by,
                 limit=limit,
+                chart_type=chart_type,
             )
 
             # Executa
@@ -1618,6 +1624,20 @@ class DashboardBlock(models.Model):
         help_text="""
         (OPCIONAL) Campo do DataSource para agrupar séries/legendas (ex: 'unidade', 'produto', 'vendedor').
         Gera uma série distinta para cada valor único do campo.
+        Para TABELA: define a coluna de agrupamento (linhas da tabela).
+        """,
+    )
+
+    series_label = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Label da Série/Legenda",
+        help_text="""
+        (OPCIONAL) Nome amigável para exibir no lugar do nome do campo.
+        Ex: se series_field = 'seller_name', pode definir series_label = 'Vendedor'.
+        Para TABELA: define o título da coluna de agrupamento.
+        Se não especificado, usa o nome do campo (series_field).
         """,
     )
 
@@ -1696,7 +1716,7 @@ class DashboardBlock(models.Model):
         verbose_name="Ordenação do Bloco",
         help_text="""Campos para ORDER BY (ex: "total_vendas DESC" ou "data_venda, unidade_id").
         Você pode inserir 1 ou mais campos separados por vírgula.
-        Exemplo: "total_vendas DESC, data_venda ASC"""
+        Exemplo: "total_vendas DESC, data_venda ASC""",
     )
 
     # ========================================================================
@@ -1804,11 +1824,19 @@ class DashboardBlock(models.Model):
         if self.block_filter and self.block_filter.strip():
             # Lista de comandos SQL perigosos (evita DDL/DML)
             dangerous_patterns = [
-                r'\bDROP\b', r'\bDELETE\b', r'\bTRUNCATE\b', r'\bUPDATE\b',
-                r'\bINSERT\b', r'\bALTER\b', r'\bCREATE\b', r'\bEXEC\b',
-                r'\bEXECUTE\b', r'\b;\s*DROP\b', r'\b;\s*DELETE\b'
+                r"\bDROP\b",
+                r"\bDELETE\b",
+                r"\bTRUNCATE\b",
+                r"\bUPDATE\b",
+                r"\bINSERT\b",
+                r"\bALTER\b",
+                r"\bCREATE\b",
+                r"\bEXEC\b",
+                r"\bEXECUTE\b",
+                r"\b;\s*DROP\b",
+                r"\b;\s*DELETE\b",
             ]
-            
+
             filter_upper = self.block_filter.upper()
             for pattern in dangerous_patterns:
                 if re.search(pattern, filter_upper, re.IGNORECASE):
@@ -1821,7 +1849,31 @@ class DashboardBlock(models.Model):
         # Valida metric_decimal_places
         if self.metric_decimal_places is not None:
             if not (0 <= self.metric_decimal_places <= 10):
-                errors["metric_decimal_places"] = "Casas decimais devem estar entre 0 e 10"
+                errors["metric_decimal_places"] = (
+                    "Casas decimais devem estar entre 0 e 10"
+                )
+
+        # Validações específicas para tipo TABELA
+        if self.chart_type == self.CHART_TYPE_TABLE:
+            # series_field é obrigatório para tabelas (define as linhas)
+            if not self.series_field or not self.series_field.strip():
+                errors["series_field"] = (
+                    "Para tabelas, o campo 'Legenda (série)' é obrigatório. "
+                    "Ele define a coluna de agrupamento (ex: seller_name, product_name)."
+                )
+            
+            # y_axis_aggregations deve ter pelo menos uma métrica
+            if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
+                errors["y_axis_aggregations"] = (
+                    "Para tabelas, configure pelo menos uma métrica para exibir como coluna "
+                    "(ex: SUM(total_value), AVG(price), COUNT(*))."
+                )
+            
+            # x_axis_field não é usado em tabelas - adiciona warning/limpeza
+            if self.x_axis_field and self.x_axis_field.strip():
+                # Não adiciona erro, mas podemos adicionar warning no futuro
+                # Por ora, o QueryBuilder já ignora x_axis_field para tabelas
+                pass
 
         # NOTA: Validação de configuração completa (eixo X, agregações Y) é feita
         # apenas na EXECUÇÃO (execute_query/get_data), não no salvamento.
@@ -1832,10 +1884,14 @@ class DashboardBlock(models.Model):
         # Aviso se campos de métrica preenchidos mas chart_type != 'metric'
         if self.chart_type != self.CHART_TYPE_METRIC:
             metric_fields_filled = [
-                field for field in [self.metric_prefix, self.metric_suffix]
+                field
+                for field in [self.metric_prefix, self.metric_suffix]
                 if field and field.strip()
             ]
-            if metric_fields_filled or (self.metric_decimal_places is not None and self.metric_decimal_places != 0):
+            if metric_fields_filled or (
+                self.metric_decimal_places is not None
+                and self.metric_decimal_places != 0
+            ):
                 # Não bloqueia, apenas aviso no futuro (podemos adicionar warnings se necessário)
                 pass
 
@@ -1845,53 +1901,60 @@ class DashboardBlock(models.Model):
     def is_configuration_complete(self):
         """
         Verifica se a configuração do bloco está completa e válida.
-        
+
         Returns:
             tuple: (is_complete: bool, errors: list[str])
         """
         errors = []
-        
+
         # Verifica agregações Y
         if not self.y_axis_aggregations or len(self.y_axis_aggregations) == 0:
             errors.append("Configure pelo menos uma agregação Y (ex: sum, count, avg)")
-        
+
         # Verifica eixo X para gráficos não-métricos
         if self.chart_type != self.CHART_TYPE_METRIC:
             if not self.x_axis_field or not self.x_axis_field.strip():
-                errors.append(f"Gráficos tipo '{self.get_chart_type_display()}' exigem um campo para o eixo X")
-        
+                errors.append(
+                    f"Gráficos tipo '{self.get_chart_type_display()}' exigem um campo para o eixo X"
+                )
+
         return (len(errors) == 0, errors)
 
     def mark_as_ready(self):
         """
         Marca o bloco como pronto (não-rascunho) após validar configuração.
-        
+
         Raises:
             ValidationError: Se configuração estiver incompleta
         """
         from django.core.exceptions import ValidationError
-        
+
         is_complete, errors = self.is_configuration_complete()
-        
+
         if not is_complete:
-            raise ValidationError({
-                '__all__': ["Não é possível marcar como pronto. Erros encontrados:"] + errors
-            })
-        
+            raise ValidationError(
+                {
+                    "__all__": ["Não é possível marcar como pronto. Erros encontrados:"]
+                    + errors
+                }
+            )
+
         self.is_draft = False
-        self.save(update_fields=['is_draft'])
+        self.save(update_fields=["is_draft"])
 
     # ========================================================================
     # SEMANTIC LAYER METHODS
     # ========================================================================
 
-    def get_analytical_query_params(self, applied_filters=None):
+    def get_analytical_query_params(self, applied_filters=None, instance_filter_sql=None):
         """
         Converte a configuração do bloco para parâmetros do execute_analytical_query().
 
         Args:
             applied_filters: Filtros aplicados via query params (opcional)
                             {field: {operator: value}}
+            instance_filter_sql: Filtro SQL global da instância do dashboard (opcional)
+                                Define o escopo dos dados (ex: "unit_code = 'SP-01'")
 
         Returns:
             dict: Parâmetros para execute_analytical_query()
@@ -1912,8 +1975,12 @@ class DashboardBlock(models.Model):
             )
 
         # Para métricas/KPIs sem eixo X, passa None (agregação total)
-        x_field = self.x_axis_field if self.x_axis_field and self.x_axis_field.strip() else None
-        
+        x_field = (
+            self.x_axis_field
+            if self.x_axis_field and self.x_axis_field.strip()
+            else None
+        )
+
         # Ordenação: usa block_order_by se definido, senão padrão "metric_date"
         if self.block_order_by and self.block_order_by.strip():
             order_by = self.block_order_by.strip()
@@ -1921,7 +1988,7 @@ class DashboardBlock(models.Model):
             order_by = "metric_date"  # Padrão se tiver eixo X
         else:
             order_by = None  # Sem eixo X, não ordena
-        
+
         params = {
             "x_axis_field": x_field,
             "x_axis_granularity": (
@@ -1932,6 +1999,7 @@ class DashboardBlock(models.Model):
             "filters": {},
             "order_by": order_by,
             "limit": 1000,
+            "chart_type": self.chart_type,  # Passa tipo de gráfico para QueryBuilder
         }
 
         # Filtros SQL (se configurado em config) - DEPRECATED, usar block_filter
@@ -1941,6 +2009,11 @@ class DashboardBlock(models.Model):
         # Filtro específico do bloco (novo)
         if self.block_filter and self.block_filter.strip():
             params["filters"]["block_filter"] = self.block_filter.strip()
+
+        # Filtro global da instância do dashboard
+        # Aplica-se a TODOS os blocos desta instância (ex: filtra por unidade)
+        if instance_filter_sql and instance_filter_sql.strip():
+            params["filters"]["instance_filter"] = instance_filter_sql.strip()
 
         # Adiciona filtros dinâmicos aplicados
         if applied_filters:
@@ -1983,12 +2056,14 @@ class DashboardBlock(models.Model):
         except Exception as e:
             return f"-- Erro ao gerar query: {str(e)}"
 
-    def execute_query(self, applied_filters=None):
+    def execute_query(self, applied_filters=None, instance_filter_sql=None):
         """
         Executa a query usando a Semantic Layer (QueryBuilder).
 
         Args:
             applied_filters: Filtros aplicados via query params (opcional)
+            instance_filter_sql: Filtro SQL global da instância do dashboard (opcional)
+                                Define o escopo dos dados para todos os blocos
 
         Returns:
             tuple: (success: bool, data: list|str)
@@ -2014,12 +2089,15 @@ class DashboardBlock(models.Model):
             )
 
         # Obtém parâmetros analíticos com filtros aplicados
-        params = self.get_analytical_query_params(applied_filters=applied_filters)
+        params = self.get_analytical_query_params(
+            applied_filters=applied_filters,
+            instance_filter_sql=instance_filter_sql
+        )
 
         # Executa query através do DataSource
         return self.datasource.execute_analytical_query(**params)
 
-    def get_data(self, applied_filters=None):
+    def get_data(self, applied_filters=None, instance_filter_sql=None):
         """
         Método principal para obter dados do bloco.
 
@@ -2028,19 +2106,30 @@ class DashboardBlock(models.Model):
 
         Args:
             applied_filters: Filtros aplicados via query params (opcional)
+            instance_filter_sql: Filtro SQL global da instância do dashboard (opcional)
+                                Define o escopo dos dados para todos os blocos
 
         Returns:
             tuple: (success: bool, data: dict|str)
                    Se success=True, data é dict normalizado {"x": [...], "series": [...]}
+                   ou {"columns": [...], "rows": [...]} para tabelas
                    Se success=False, data é mensagem de erro (str)
         """
-        success, raw_data = self.execute_query(applied_filters=applied_filters)
+        success, raw_data = self.execute_query(
+            applied_filters=applied_filters,
+            instance_filter_sql=instance_filter_sql
+        )
 
         if not success:
             return False, raw_data
 
         # Normaliza dados para formato do frontend
-        normalized_data = self.normalize_query_results(raw_data)
+        # Tabelas usam formato diferente: {"columns": [...], "rows": [...]}
+        if self.chart_type == self.CHART_TYPE_TABLE:
+            normalized_data = self.normalize_table_results(raw_data)
+        else:
+            normalized_data = self.normalize_query_results(raw_data)
+        
         return True, normalized_data
 
     def format_x_axis_value(self, value):
@@ -2148,7 +2237,7 @@ class DashboardBlock(models.Model):
             if x_val not in seen:
                 seen.add(x_val)
                 raw_x_values.append(x_val)
-        
+
         x_values = [self.format_x_axis_value(val) for val in raw_x_values]
 
         # Cria mapeamento de valor bruto -> valor formatado para lookup
@@ -2225,3 +2314,86 @@ class DashboardBlock(models.Model):
             "x": x_values,
             "series": series_list,
         }
+
+    def normalize_table_results(self, query_results):
+        """
+        Normaliza os resultados da query para formato tabular.
+
+        Usado para chart_type='table'. Converte de:
+        [
+            {"series_key": "Carlos Silva", "metric_value_1": 7497.53, "metric_value_2": 124.96},
+            {"series_key": "Patricia Gomes", "metric_value_1": 9100.09, "metric_value_2": 151.67}
+        ]
+
+        Para:
+        {
+            "columns": [
+                {"field": "series_key", "label": "Vendedor", "type": "string"},
+                {"field": "metric_value_1", "label": "Total de Vendas", "type": "number"},
+                {"field": "metric_value_2", "label": "Ticket Médio", "type": "number"}
+            ],
+            "rows": [
+                ["Carlos Silva", 7497.53, 124.96],
+                ["Patricia Gomes", 9100.09, 151.67]
+            ]
+        }
+
+        Args:
+            query_results: Lista de dicionários retornada pela query
+
+        Returns:
+            dict: Dados formatados como tabela com {"columns": [...], "rows": [[...]]}
+        """
+        if not query_results or len(query_results) == 0:
+            return {"columns": [], "rows": []}
+
+        # Monta definição de colunas
+        columns = []
+        
+        # Primeira coluna: dimensão de agrupamento (series_key)
+        if "series_key" in query_results[0]:
+            # Usa series_label (nome amigável) se definido, senão usa series_field, senão "Dimensão"
+            dimension_label = (
+                self.series_label 
+                if self.series_label and self.series_label.strip()
+                else self.series_field or "Dimensão"
+            )
+            columns.append({
+                "field": "series_key",
+                "label": dimension_label,
+                "type": "string"
+            })
+        
+        # Demais colunas: métricas do y_axis_aggregations
+        for idx, agg_config in enumerate(self.y_axis_aggregations):
+            label = agg_config.get("label", agg_config.get("field"))
+            alias = f"metric_value_{idx + 1}"
+            
+            columns.append({
+                "field": alias,
+                "label": label,
+                "type": "number"  # Métricas agregadas são sempre numéricas
+            })
+        
+        # Monta linhas como array de arrays
+        rows = []
+        for row in query_results:
+            row_values = []
+            
+            # Adiciona valor da dimensão (series_key)
+            if "series_key" in row:
+                row_values.append(row.get("series_key"))
+            
+            # Adiciona valores das métricas
+            for idx in range(len(self.y_axis_aggregations)):
+                alias = f"metric_value_{idx + 1}"
+                value = row.get(alias)
+                row_values.append(value)
+            
+            rows.append(row_values)
+        
+        return {
+            "columns": columns,
+            "rows": rows
+        }
+

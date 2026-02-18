@@ -252,16 +252,19 @@ class QueryBuilder:
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = "metric_date",
         limit: Optional[int] = None,
+        chart_type: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Gera query analítica completa.
 
         Args:
             x_axis_field: Campo do eixo X (opcional - se None, faz agregação total sem agrupamento)
+                         Para chart_type='table', este campo é ignorado
             x_axis_granularity: Granularidade temporal (se aplicável)
             y_axis_metrics: Lista de métricas do eixo Y
                 Formato: [{"field": "revenue", "aggregation": "sum", "label": "Total"}]
             series_field: Campo para legendas/séries (opcional)
+                         Para chart_type='table', define a dimensão de agrupamento (linhas da tabela)
             filters: Filtros estruturados
                 Formato: {
                     "date_start": "2024-01-01",
@@ -272,11 +275,19 @@ class QueryBuilder:
                 }
             order_by: Campo para ordenação (padrão: metric_date, None se sem eixo X)
             limit: Limite de registros (opcional)
+            chart_type: Tipo de gráfico ('bar', 'line', 'pie', 'table', 'metric', etc.)
+                       Usado para ajustar lógica de geração de query
 
         Returns:
             Tupla (query_sql, params_dict)
         """
         y_axis_metrics = y_axis_metrics or []
+        
+        # Para tabelas, ignora x_axis_field e ajusta lógica
+        is_table_chart = chart_type == "table"
+        if is_table_chart:
+            x_axis_field = None  # Tabelas não usam eixo X
+            x_axis_granularity = None
 
         # Valida campos (x_axis_field é opcional para métricas simples)
         if x_axis_field and not self.validate_column(x_axis_field):
@@ -425,6 +436,14 @@ class QueryBuilder:
                 # não do usuário final
                 where_clauses.append(f"({block_filter})")
 
+            # Filtro global da instância (instance_filter)
+            # Aplica-se a TODOS os blocos desta instância do dashboard
+            instance_filter = filters.get("instance_filter")
+            if instance_filter:
+                # IMPORTANTE: Este filtro vem de configuração confiável (admin)
+                # não do usuário final. Define scope da instância (ex: unit_code = 'SP-01')
+                where_clauses.append(f"({instance_filter})")
+
         if where_clauses:
             query_parts.append("WHERE")
             query_parts.append("  " + "\n  AND ".join(where_clauses))
@@ -441,6 +460,10 @@ class QueryBuilder:
         # Se não há GROUP BY, é agregação total (métricas simples)
 
         # ORDER BY
+        # Para tabelas, usa series_key como padrão se não especificado
+        if is_table_chart and series_field and not order_by:
+            order_by = "series_key"
+        
         if order_by:
             # Aplica ordenação se especificada
             query_parts.append(f"ORDER BY {order_by}")
