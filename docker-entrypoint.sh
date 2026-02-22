@@ -24,5 +24,13 @@ if not User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').exists():
 END
 fi
 
+# Carrega dados de demonstração (se habilitado)
+if [ "$DEMO_MODE" = "true" ]; then
+    echo "⏳ Carregando dados de demonstração..."
+    python manage.py loaddata fixtures/demo_data.json
+    python manage.py setup_initial_data
+    echo "✓ Dados de demonstração carregados!"
+fi
+
 echo "🚀 Iniciando servidor..."
 python manage.py runserver 0.0.0.0:8000

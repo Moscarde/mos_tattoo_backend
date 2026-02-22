@@ -1,187 +1,106 @@
-# Dashboard Backend - Sistema BI Interno
+# Template-Based BI Distribution | Backend Engine (API)
 
-Backend Django para dashboards gerenciais com controle de acesso por unidade.
+Este serviço é o **núcleo de inteligência** do ecossistema [Template-Based BI Distribution](https://github.com/Moscarde/Template-Based-BI-Distribution) — uma Prova de Conceito que valida uma arquitetura de distribuição escalável de dashboards analíticos através de templates instanciáveis e permissionamento dinâmico.
 
-## 🎯 O que é
-
-Sistema de BI/Analytics (apenas leitura) com:
-- Templates de dashboards reutilizáveis
-- Controle de acesso por papéis e unidades
-- Queries SQL seguras (apenas SELECT)
-- API REST + Django Admin
-
-## 🚀 Quick Start
-
-```bash
-# Subir containers
-./manage.sh up
-
-# Criar dados iniciais (grupos, permissões, unidades, usuários)
-./manage.sh shell "python manage.py setup_initial_data"
-```
-
-Acesse: http://localhost:8000/admin/
-
-**Usuários criados:**
-- `admin_tecnico` / `admin123` - Administrador com acesso total
-- `gerente_geral` / `gerente123` - Gerente geral
-- `gerente_unidade_sp` / `gerente123` - Gerente da unidade SP-01
-
-## 🛠️ Stack
-
-- Django 4.2 LTS + DRF
-- PostgreSQL
-- JWT Authentication
-- Docker + Docker Compose
-
-## 🏗️ Arquitetura
-
-### Apps
-
-**Core** - Modelo `Unidade` (lojas/filiais)
-
-**Accounts** - `Profile` com papéis:
-- `ADMIN_TECNICO` - Acesso total
-- `GERENTE_GERAL` - Todas unidades
-- `GERENTE_UNIDADE` - Suas unidades
-
-**Dashboards** - 3 modelos:
-- `DashboardTemplate` - Template com schema JSON
-- `DashboardInstance` - Instância por unidade
-- `DataSource` - Queries SQL (validação automática)
-
-## 🔌 API
-
-```bash
-# Login
-POST /api/auth/login/
-{"username": "admin", "password": "admin123"}
-
-# Dashboards do usuário
-GET /api/dashboards/
-
-# Dados de um dashboard
-GET /api/dashboards/{id}/data/
-```
-
-## 📦 Instalação
-
-### Com Docker (Recomendado)
-
-```bash
-# Inicia tudo
-./manage.sh up
-
-# Ver logs
-./manage.sh logs
-
-# Parar
-./manage.sh down
-
-# Outros comandos
-./manage.sh  # mostra ajuda
-```
-
-### Sem Docker
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Configure .env (mude DB_HOST para localhost)
-cp .env.example .env
-
-# Crie o banco
-createdb mos_tattoo_db
-
-# Migre e rode
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
-```
-
-## 👨‍💼 Usando o Admin
-
-### Bootstrap de Dados Iniciais
-
-O sistema possui uma command de gerenciamento para criar dados iniciais automaticamente:
-
-```bash
-# Com Docker
-./manage.sh shell "python manage.py setup_initial_data"
-
-# Sem Docker
-python manage.py setup_initial_data
-```
-
-**O que é criado:**
-
-**Grupos e Permissões:**
-- `ADMIN_TECNICO` - Todas as permissões do Django Admin
-- `GERENTE_GERAL` - Sem permissões de admin (acesso via API)
-- `GERENTE_UNIDADE` - Sem permissões de admin (acesso via API)
-
-**Unidades:**
-- São Paulo (SP-01)
-- Rio de Janeiro (RJ-01)
-- Belo Horizonte (BH-01)
-- Curitiba (CT-01)
-- Porto Alegre (POA-01)
-
-**Usuários de Exemplo:**
-| Usuário | Senha | Grupo | Acesso Admin | Unidades |
-|---------|-------|-------|--------------|----------|
-| admin_tecnico | admin123 | ADMIN_TECNICO | ✓ Sim (superuser) | Todas |
-| gerente_geral | gerente123 | GERENTE_GERAL | ✗ Não (API) | Todas |
-| gerente_unidade_sp | gerente123 | GERENTE_UNIDADE | ✗ Não (API) | SP-01 |
-
-**Opções da command:**
-```bash
-# Pular criação de usuários (só criar grupos e unidades)
-python manage.py setup_initial_data --skip-users
-
-# Ver ajuda
-python manage.py setup_initial_data --help
-```
-
-> 💡 **A command é idempotente**: pode ser executada múltiplas vezes sem duplicar dados.
-
-### Criação Manual de Recursos
-
-1. **Criar Unidades** → Admin > Core > Unidades
-
-2. **Criar DataSource** → Admin > Dashboards > Fontes de Dados
-   ```sql
-   SELECT produto, SUM(valor) as total
-   FROM fat_vendas
-   WHERE unidade_id = %(unidade_id)s
-   GROUP BY produto
-   ```
-
-3. **Criar Template** → Admin > Dashboards > Templates
-   ```json
-   {
-     "blocks": [{
-       "type": "chart",
-       "dataSource": "vendas_produto"
-     }]
-   }
-   ```
-
-4. **Criar Instância** → Associar template + unidade
-
-5. **Criar Usuários** → Configure papel e unidades
-
-## 📊 Próximos Passos
-
-- [ ] Implementar execução de queries no endpoint `/dashboards/{id}/data/`
-- [ ] Sistema de cache para queries
-- [ ] Logs de auditoria
-- [ ] Filtros dinâmicos
-- [ ] Exportação (CSV, Excel)
-- [ ] Testes automatizados
+> 🔗 **Repositório Central**: Para entender o contexto completo da arquitetura, acesse o [repositório principal](https://github.com/Moscarde/Template-Based-BI-Distribution).
 
 ---
 
-**Projeto de Portfólio** - Demonstração de arquitetura Django/DRF para sistemas de BI
+## 🚀 Visão Geral
+
+O backend atua como uma **Headless BI Engine**: toda a lógica de composição, segurança e agregação de dados reside aqui, servindo metadados e payloads prontos para consumo por qualquer frontend.
+
+A proposta resolve o clássico "caos da replicação" — a necessidade de manter dezenas de cópias do mesmo dashboard, diferenciadas apenas pelo filtro de unidade. Nesta arquitetura, N dashboards são definidos como templates, e cada instância é gerada dinamicamente com seu próprio contexto de segurança e filtro, sem duplicação de código ou estrutura. Alterações no template se refletem automaticamente em todas as instâncias, garantindo **consistência e agilidade** na manutenção.
+
+### Principais Características
+
+- **Semantic Layer (Camada Semântica)**: Abstração que separa os dados brutos (`DataSources`) da intenção de visualização (`Charts`), permitindo a construção dinâmica de queries SQL seguras e parametrizadas.
+- **Template Engine**: Um template de dashboard é definido uma única vez e instanciado N vezes, cada instância com seu próprio contexto de filtro e permissão.
+- **Row Level Context**: Filtros de segurança são injetados antes do processamento da query, garantindo isolamento entre unidades sem lógica no frontend.
+- **Arquitetura Multi-tenant**: Isolamento lógico de dados por unidade de negócio via configuração, sem duplicação de código ou estrutura.
+- **Controle de Acesso Granular (RBAC)**: Perfis diferenciados — Admin Técnico, Gerente Geral e Gerente de Unidade — com níveis distintos de acesso e visibilidade.
+- **API RESTful**: Endpoints padronizados para integração com qualquer frontend moderno (React, Vue, Next.js, mobile).
+
+---
+
+## 📦 Estrutura do Repositório
+
+Este repositório disponibiliza **duas versões** do ambiente:
+
+| Versão | Descrição |
+|---|---|
+| **Clean** | Apenas os models e a estrutura da engine, sem dados. Ideal para adaptar a engine ao seu próprio domínio. |
+| **Demo** | Ambiente pré-populado com dados fictícios de uma rede de estúdios (mock temático), pronto para exploração visual dos dashboards. |
+
+> A temática da Demo (dados de uma rede de estúdios de tatuagem) foi escolhida exclusivamente para viabilizar uma exploração rica de gráficos e métricas variadas. Ela não representa o domínio de aplicação da engine. Para o uso completo da demo, é necessario a configuração do [frontend](https://github.com/Moscarde/mos_tattoo_frontend) e do [banco de dados](https://github.com/Moscarde/mos_tattoo_database).
+
+---
+
+## 📚 Documentação Técnica
+
+Para detalhes aprofundados sobre a implementação, consulte a pasta `docs/`:
+
+- [🏛️ Arquitetura do Sistema](docs/ARCHITECTURE.md): Fluxo de dados, Camada Semântica e decisões de design.
+- [💾 Dicionário de Modelos](docs/MODELS.md): Explicação detalhada das entidades e regras de negócio.
+- [🔌 Contratos da API](docs/API_CONTRACTS.md): Guia de referência dos endpoints para desenvolvedores Frontend.
+
+---
+
+## 🛠️ Como Rodar o Projeto
+
+**Pré-requisitos:** Docker e Docker Compose.
+
+### Deploy Limpo (estrutura sem dados)
+
+Ideal para adaptar a engine ao seu próprio domínio. Apenas migrations são aplicadas — o banco inicia vazio exceto pelo superuser de acesso ao admin.
+
+```bash
+./manage.sh up
+```
+
+Acesse: `http://localhost:8000/admin/` → `admin / admin123`
+
+---
+
+### Deploy Demo (dados fictícios pré-carregados)
+
+Ambiente completo com conexões, templates, blocos e instâncias de dashboard já configurados, usando dados de uma rede fictícia de estúdios de tatuagem.
+
+```bash
+./manage.sh up-demo
+```
+
+Acesse: `http://localhost:8000/admin/` → `admin / admin123`
+
+Usuários de demonstração disponíveis:
+
+| Usuário | Senha | Perfil |
+|---|---|---|
+| `admin_tecnico` | `admin123` | Admin Técnico (superuser) |
+| `gerente_geral` | `gerente123` | Gerente Geral |
+| `gerente_unidade_sp` | `gerente123` | Gerente de Unidade (SP-01) |
+
+> Para a experiência completa da demo, configure também o [frontend](https://github.com/Moscarde/mos_tattoo_frontend) e o [banco de dados externo](https://github.com/Moscarde/mos_tattoo_database).
+
+---
+
+### Outros comandos
+
+```bash
+./manage.sh down    # Para os containers
+./manage.sh logs    # Acompanha os logs em tempo real
+./manage.sh shell   # Shell interativo do Django
+./manage.sh db      # Acessa o PostgreSQL diretamente
+./manage.sh clean   # Remove containers e volumes (⚠️ apaga todos os dados)
+```
+
+> Para trocar entre modos sem recriar o ambiente: edite `DEMO_MODE` no `.env` e rode `./manage.sh clean` seguido do comando de deploy desejado.
+
+## 💻 Stack Tecnológica
+
+| Camada | Tecnologia |
+|---|---|
+| Linguagem | Python 3.10+ |
+| Framework | Django 4.2 & Django Rest Framework |
+| Banco de Dados | PostgreSQL |
+| Infraestrutura | Docker & Docker Compose |
