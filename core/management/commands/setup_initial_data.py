@@ -125,6 +125,7 @@ class Command(BaseCommand):
             {"nome": "Belo Horizonte", "codigo": "BH-01"},
             {"nome": "Curitiba", "codigo": "CT-01"},
             {"nome": "Porto Alegre", "codigo": "POA-01"},
+            {"nome": "Geral", "codigo": "GERAL"},
         ]
 
         unidades = {}
