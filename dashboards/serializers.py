@@ -6,22 +6,7 @@ from rest_framework import serializers
 
 from core.serializers import UnidadeSerializer
 
-from .models import (
-    ComponentType,
-    DashboardBlock,
-    DashboardInstance,
-    DashboardTemplate,
-    DataSource,
-    TemplateComponent,
-)
-
-
-class ComponentTypeSerializer(serializers.ModelSerializer):
-    """Serializer para ComponentType."""
-
-    class Meta:
-        model = ComponentType
-        fields = ["id", "nome", "descricao"]
+from .models import DashboardBlock, DashboardInstance, DashboardTemplate, DataSource
 
 
 class DataSourceSerializer(serializers.ModelSerializer):
@@ -45,28 +30,8 @@ class DataSourceSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "criado_em", "atualizado_em"]
 
 
-class TemplateComponentSerializer(serializers.ModelSerializer):
-    """Serializer para TemplateComponent."""
-
-    component_type = ComponentTypeSerializer(read_only=True)
-    datasource_nome = serializers.CharField(source="datasource.nome", read_only=True)
-
-    class Meta:
-        model = TemplateComponent
-        fields = [
-            "id",
-            "nome",
-            "component_type",
-            "datasource_nome",
-            "config",
-            "ordem",
-        ]
-
-
 class DashboardTemplateSerializer(serializers.ModelSerializer):
     """Serializer para DashboardTemplate."""
-
-    componentes = TemplateComponentSerializer(many=True, read_only=True)
 
     class Meta:
         model = DashboardTemplate
@@ -75,7 +40,6 @@ class DashboardTemplateSerializer(serializers.ModelSerializer):
             "nome",
             "descricao",
             "ativo",
-            "componentes",
             "schema",
             "criado_em",
             "atualizado_em",

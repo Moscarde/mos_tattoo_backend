@@ -7,62 +7,12 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from .models import (
-    ComponentType,
     Connection,
     DashboardBlock,
     DashboardInstance,
     DashboardTemplate,
     DataSource,
-    TemplateComponent,
 )
-
-
-@admin.register(ComponentType)
-class ComponentTypeAdmin(admin.ModelAdmin):
-    """Admin para o modelo ComponentType."""
-
-    list_display = ["nome", "descricao", "ativo", "num_componentes", "criado_em"]
-    list_filter = ["ativo", "criado_em"]
-    search_fields = ["nome", "descricao"]
-    readonly_fields = ["id", "criado_em", "atualizado_em"]
-
-    fieldsets = (
-        (
-            "Informações",
-            {"fields": ("nome", "descricao", "ativo")},
-        ),
-        (
-            "Metadados",
-            {"fields": ("id", "criado_em", "atualizado_em"), "classes": ("collapse",)},
-        ),
-    )
-
-    def num_componentes(self, obj):
-        """Retorna o número de componentes deste tipo."""
-        return obj.componentes.count()
-
-    num_componentes.short_description = "Componentes"
-
-
-class TemplateComponentInline(admin.TabularInline):
-    """Inline para adicionar componentes ao template - LEGADO."""
-
-    model = TemplateComponent
-    extra = 0
-    fields = ["nome", "component_type", "datasource", "ordem", "ativo", "edit_config"]
-    readonly_fields = ["edit_config"]
-    ordering = ["ordem", "nome"]
-
-    def edit_config(self, obj):
-        """Link para editar configurações detalhadas."""
-        if obj.id:
-            return format_html(
-                '<a href="/admin/dashboards/templatecomponent/{}/change/" target="_blank">Editar Config</a>',
-                obj.id,
-            )
-        return "-"
-
-    edit_config.short_description = "Config"
 
 
 class DashboardBlockInline(admin.TabularInline):
@@ -100,75 +50,6 @@ class DashboardBlockInline(admin.TabularInline):
         return format_html('<span style="color: #999;">Salve primeiro</span>')
 
     edit_config.short_description = "Configuração"
-
-
-@admin.register(TemplateComponent)
-class TemplateComponentAdmin(admin.ModelAdmin):
-    """Admin para o modelo TemplateComponent - LEGADO.
-
-    ⚠️ SISTEMA LEGADO - Não use para novos dashboards!
-    Este modelo está mantido apenas para compatibilidade com dashboards antigos.
-
-    Para novos dashboards, use: DashboardBlock (Dashboard > Blocos de Dashboard)
-    """
-
-    list_display = [
-        "nome",
-        "template",
-        "component_type",
-        "datasource",
-        "ordem",
-        "ativo",
-    ]
-    list_filter = ["ativo", "component_type", "template"]
-    search_fields = ["nome", "template__nome", "datasource__nome"]
-    readonly_fields = ["id", "criado_em", "atualizado_em", "preview_config"]
-
-    fieldsets = (
-        (
-            "Informações Básicas",
-            {
-                "fields": (
-                    "template",
-                    "nome",
-                    "component_type",
-                    "datasource",
-                    "ordem",
-                    "ativo",
-                )
-            },
-        ),
-        (
-            "Configurações do Componente",
-            {
-                "fields": ("config", "preview_config"),
-                "description": "Configurações JSON específicas do componente (cores, labels, opções, etc)",
-            },
-        ),
-        (
-            "Metadados",
-            {"fields": ("id", "criado_em", "atualizado_em"), "classes": ("collapse",)},
-        ),
-    )
-
-    def preview_config(self, obj):
-        """Mostra preview formatado das configurações."""
-        if obj.config:
-            import json
-
-            try:
-                formatted = json.dumps(obj.config, indent=2, ensure_ascii=False)
-                # Escapa as chaves para format_html
-                formatted = formatted.replace("{", "{{").replace("}", "}}")
-                return format_html(
-                    '<pre style="max-height: 300px; overflow: auto;">{}</pre>',
-                    formatted,
-                )
-            except:
-                return str(obj.config)
-        return "-"
-
-    preview_config.short_description = "Preview das Configurações"
 
 
 @admin.register(DashboardBlock)
@@ -544,7 +425,6 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
         "nome",
         "ativo",
         "num_blocks",
-        "num_componentes",
         "num_instances",
         "criado_em",
     ]
@@ -558,8 +438,7 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
         "preview_componentes_data",
         "architecture_info",
     ]
-    inlines = [DashboardBlockInline]  # Sistema NOVO - use DashboardBlock
-    # TemplateComponentInline removido - apenas para dashboards legados (edite diretamente se necessário)
+    inlines = [DashboardBlockInline]
 
     fieldsets = (
         (
@@ -606,30 +485,10 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
     )
 
     def architecture_info(self, obj):
-        """Mostra informações sobre qual sistema usar."""
+        """Mostra informações sobre o template."""
         num_blocks = obj.blocks.filter(ativo=True).count()
-        num_componentes = obj.componentes.filter(ativo=True).count()
 
-        if num_blocks > 0 and num_componentes > 0:
-            return format_html(
-                '<div style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107;">'
-                "<strong>⚠️ Template Misto</strong><br>"
-                "Este template tem <strong>{} blocos</strong> e <strong>{} componentes estruturados</strong>.<br>"
-                "Recomendação: <strong>Use apenas Blocos</strong> para melhor manutenção."
-                "</div>",
-                num_blocks,
-                num_componentes,
-            )
-        elif num_componentes > 0:
-            return format_html(
-                '<div style="padding: 10px; background: #e7f3ff; border-left: 4px solid #0066cc;">'
-                "<strong>📊 Dashboard com Componentes</strong><br>"
-                "Este template usa <strong>{} componentes estruturados</strong>.<br>"
-                "Endpoint: <code>/api/dashboards/{{id}}/data/</code>"
-                "</div>",
-                num_componentes,
-            )
-        elif num_blocks > 0:
+        if num_blocks > 0:
             return format_html(
                 '<div style="padding: 10px; background: #d4edda; border-left: 4px solid #28a745;">'
                 "<strong>✅ Dashboard com Blocos</strong><br>"
@@ -657,12 +516,6 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
         return format_html('<span style="color: #999;">0</span>')
 
     num_blocks.short_description = "Blocos (Novo)"
-
-    def num_componentes(self, obj):
-        """Retorna o número de componentes estruturados deste template."""
-        return obj.componentes.filter(ativo=True).count()
-
-    num_componentes.short_description = "Componentes"
 
     def num_instances(self, obj):
         """Retorna o número de instâncias deste template."""
@@ -708,32 +561,19 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
             raise TypeError(f"Type {type(obj_value)} not serializable")
 
         try:
-            # Busca blocos do template (arquitetura refatorada)
+            # Busca blocos do template
             blocks = (
                 DashboardBlock.objects.filter(template=obj, ativo=True)
                 .select_related("datasource", "datasource__connection")
                 .order_by("order")
             )
 
-            # Se não tem blocos, tenta componentes legados
             if not blocks.exists():
-                componentes = TemplateComponent.objects.filter(
-                    template=obj, ativo=True
-                ).select_related(
-                    "datasource", "component_type", "datasource__connection"
-                )
-
-                if not componentes.exists():
-                    return format_html(
-                        '<div style="padding: 15px; background: #fff3cd; border-radius: 5px;">'
-                        "⚠️ Nenhum bloco ou componente adicionado ao template ainda. "
-                        "Adicione blocos usando a seção acima."
-                        "</div>"
-                    )
-
-                # Usa componentes legados
-                return self._preview_structured_components(
-                    componentes, obj, json_serializer
+                return format_html(
+                    '<div style="padding: 15px; background: #fff3cd; border-radius: 5px;">'
+                    "⚠️ Nenhum bloco adicionado ao template ainda. "
+                    "Adicione blocos usando a seção acima."
+                    "</div>"
                 )
 
             # Formata os resultados dos blocos
@@ -848,68 +688,6 @@ class DashboardTemplateAdmin(admin.ModelAdmin):
                 "</div>",
                 traceback.format_exc(),
             )
-
-    def _preview_structured_components(self, componentes, obj, json_serializer):
-        """Preview para componentes legados."""
-        import json
-
-        html_parts = []
-        html_parts.append(
-            '<div style="font-family: monospace; background: #f5f5f5; padding: 15px; border-radius: 5px;">'
-        )
-        html_parts.append(
-            '<h3 style="margin-top: 0;">🔴 Preview dos Componentes LEGADOS</h3>'
-        )
-        html_parts.append(f"<p><strong>Template:</strong> {obj.nome}</p>")
-        html_parts.append(f"<p><strong>Total:</strong> {componentes.count()}</p>")
-        html_parts.append(
-            '<p style="color: #dc3545;">⚠️ Este template usa sistema LEGADO. Recomenda-se migrar para Blocos.</p>'
-        )
-        html_parts.append("<hr>")
-
-        for componente in componentes:
-            html_parts.append(
-                f"<h4>📁 {componente.nome} ({componente.component_type.nome})</h4>"
-            )
-            html_parts.append(
-                f"<p><strong>DataSource:</strong> {componente.datasource.nome}</p>"
-            )
-
-            try:
-                success, result = componente.datasource.execute_query(params=None)
-                if success:
-                    num_records = len(result) if isinstance(result, list) else 0
-                    html_parts.append(
-                        f'<p style="color: green;"><strong>✅ {num_records} registro(s)</strong></p>'
-                    )
-                    if num_records > 0:
-                        preview_data = result[:3]
-                        formatted_json = json.dumps(
-                            preview_data,
-                            indent=2,
-                            ensure_ascii=False,
-                            default=json_serializer,
-                        )
-                        formatted_json = formatted_json.replace("{", "{{").replace(
-                            "}", "}}"
-                        )
-                        html_parts.append("<details>")
-                        html_parts.append(
-                            '<summary style="cursor: pointer;">📄 Dados (3 primeiros)</summary>'
-                        )
-                        html_parts.append(
-                            f'<pre style="background: white; padding: 10px; border: 1px solid #ddd; overflow: auto; max-height: 200px;">{formatted_json}</pre>'
-                        )
-                        html_parts.append("</details>")
-                else:
-                    html_parts.append(f'<p style="color: red;">❌ Erro: {result}</p>')
-            except Exception as e:
-                html_parts.append(f'<p style="color: red;">❌ Erro: {str(e)}</p>')
-
-            html_parts.append("<hr>")
-
-        html_parts.append("</div>")
-        return format_html("".join(html_parts))
 
     preview_componentes_data.short_description = "Preview dos Dados"
 
@@ -1039,91 +817,20 @@ class DashboardInstanceAdmin(admin.ModelAdmin):
             # Dados de cada datasource
             if datasources_data:
                 for datasource_name, data in datasources_data.items():
-                    html_parts.append(f"<h4>📁 Componente: {datasource_name}</h4>")
+                    html_parts.append(f"<h4>📁 DataSource: {datasource_name}</h4>")
 
-                    # Verifica se é um componente estruturado (com type, config, data)
-                    if isinstance(data, dict) and "type" in data:
-                        # Componente estruturado
-                        html_parts.append(
-                            f'<p><strong>Tipo:</strong> {data.get("type", "N/A")}</p>'
-                        )
-
-                        if data.get("error"):
-                            html_parts.append(
-                                f'<div style="color: red; background: #ffebee; padding: 10px; border-radius: 3px; margin: 10px 0;">'
-                            )
-                            html_parts.append(
-                                f'<strong>❌ Erro:</strong> {data["error"]}'
-                            )
-                            html_parts.append("</div>")
-                        else:
-                            component_data = data.get("data", [])
-                            num_records = (
-                                len(component_data)
-                                if isinstance(component_data, list)
-                                else 0
-                            )
-                            html_parts.append(
-                                f'<p style="color: green;"><strong>✅ {num_records} registro(s) encontrado(s)</strong></p>'
-                            )
-
-                            # Mostra config do componente
-                            if data.get("config"):
-                                config_str = json.dumps(
-                                    data["config"], indent=2, ensure_ascii=False
-                                )
-                                config_str = config_str.replace("{", "{{").replace(
-                                    "}", "}}"
-                                )
-                                html_parts.append('<details style="margin: 10px 0;">')
-                                html_parts.append(
-                                    '<summary style="cursor: pointer; font-weight: bold;">⚙️ Configurações</summary>'
-                                )
-                                html_parts.append(
-                                    f'<pre style="background: white; padding: 10px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 200px;">{config_str}</pre>'
-                                )
-                                html_parts.append("</details>")
-
-                            # Mostra preview dos dados (primeiros 5 registros)
-                            if num_records > 0:
-                                preview_data = component_data[:5]
-                                formatted_json = json.dumps(
-                                    preview_data,
-                                    indent=2,
-                                    ensure_ascii=False,
-                                    default=json_serializer,
-                                )
-                                formatted_json = formatted_json.replace(
-                                    "{", "{{"
-                                ).replace("}", "}}")
-                                html_parts.append("<details open>")
-                                html_parts.append(
-                                    '<summary style="cursor: pointer; font-weight: bold; margin: 10px 0;">Dados (primeiros 5 registros):</summary>'
-                                )
-                                html_parts.append(
-                                    f'<pre style="background: white; padding: 10px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 400px;">{formatted_json}</pre>'
-                                )
-                                html_parts.append("</details>")
-
-                                if num_records > 5:
-                                    html_parts.append(
-                                        f'<p style="color: #666; font-size: 12px;">... e mais {num_records - 5} registro(s)</p>'
-                                    )
-                    elif isinstance(data, dict) and data.get("error"):
-                        # Formato antigo - erro
+                    if isinstance(data, dict) and data.get("error"):
                         html_parts.append(
                             f'<div style="color: red; background: #ffebee; padding: 10px; border-radius: 3px; margin: 10px 0;">'
                         )
                         html_parts.append(f'<strong>❌ Erro:</strong> {data["error"]}')
                         html_parts.append("</div>")
                     else:
-                        # Formato antigo - lista direta
                         num_records = len(data) if isinstance(data, list) else 0
                         html_parts.append(
                             f'<p style="color: green;"><strong>✅ {num_records} registro(s) encontrado(s)</strong></p>'
                         )
 
-                        # Mostra preview dos dados (primeiros 5 registros)
                         if num_records > 0:
                             preview_data = data[:5]
                             formatted_json = json.dumps(
@@ -1132,7 +839,6 @@ class DashboardInstanceAdmin(admin.ModelAdmin):
                                 ensure_ascii=False,
                                 default=json_serializer,
                             )
-                            # Escapa as chaves para evitar erro no format_html
                             formatted_json = formatted_json.replace("{", "{{").replace(
                                 "}", "}}"
                             )

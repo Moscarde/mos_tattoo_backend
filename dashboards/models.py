@@ -4,6 +4,7 @@ Models para o app dashboards.
 Este módulo define os modelos relacionados a dashboards:
 - DashboardTemplate: templates globais de dashboards
 - DashboardInstance: instâncias de dashboards por unidade
+- DashboardBlock: blocos de visualização (gráficos, tabelas, métricas)
 - Connection: conexões a bancos de dados externos
 - DataSource: fontes de dados (queries SQL) para os dashboards
 """
@@ -15,35 +16,6 @@ from django.contrib.auth.models import User
 from django.db import models
 
 from core.models import Unidade
-
-
-class ComponentType(models.Model):
-    """
-    Tipo de componente/gráfico disponível.
-
-    Define os tipos de visualizações que podem ser usados nos dashboards
-    (bar-chart, line-chart, pie-chart, table, etc).
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    nome = models.CharField(
-        max_length=50,
-        unique=True,
-        verbose_name="Nome",
-        help_text="Identificador do tipo (ex: bar-chart, line-chart, pie-chart)",
-    )
-    descricao = models.TextField(blank=True, verbose_name="Descrição")
-    ativo = models.BooleanField(default=True, verbose_name="Ativo")
-    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
-    atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
-
-    class Meta:
-        verbose_name = "Tipo de Componente"
-        verbose_name_plural = "Tipos de Componentes"
-        ordering = ["nome"]
-
-    def __str__(self):
-        return self.nome
 
 
 class DashboardTemplate(models.Model):
@@ -1429,65 +1401,6 @@ class DataSource(models.Model):
             return False, f"Erro na query SQL: {str(e)}"
         except Exception as e:
             return False, f"Erro ao executar query: {str(e)}"
-
-
-class TemplateComponent(models.Model):
-    """
-    Componente individual dentro de um template de dashboard.
-
-    Cada componente representa um elemento visual (gráfico, tabela, etc)
-    com suas configurações e fonte de dados específicas.
-
-    LEGADO: Mantido para compatibilidade. Novos dashboards devem usar DashboardBlock.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    template = models.ForeignKey(
-        DashboardTemplate,
-        on_delete=models.CASCADE,
-        related_name="componentes",
-        verbose_name="Template",
-    )
-    component_type = models.ForeignKey(
-        ComponentType,
-        on_delete=models.PROTECT,
-        related_name="componentes",
-        verbose_name="Tipo de Componente",
-    )
-    datasource = models.ForeignKey(
-        DataSource,
-        on_delete=models.PROTECT,
-        related_name="componentes",
-        verbose_name="Fonte de Dados",
-    )
-    nome = models.CharField(
-        max_length=100,
-        verbose_name="Nome",
-        help_text="Nome identificador do componente no template",
-    )
-    config = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name="Configurações",
-        help_text="Configurações específicas do componente (cores, labels, eixos, etc)",
-    )
-    ordem = models.IntegerField(
-        default=0,
-        verbose_name="Ordem",
-        help_text="Ordem de exibição do componente no dashboard",
-    )
-    ativo = models.BooleanField(default=True, verbose_name="Ativo")
-    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
-    atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
-
-    class Meta:
-        verbose_name = "Componente do Template"
-        verbose_name_plural = "Componentes dos Templates"
-        ordering = ["template", "ordem", "nome"]
-        unique_together = ["template", "nome"]
-
-    def __str__(self):
-        return f"{self.template.nome} - {self.nome} ({self.component_type.nome})"
 
 
 class DashboardBlock(models.Model):

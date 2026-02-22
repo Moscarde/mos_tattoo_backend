@@ -65,64 +65,18 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _execute_datasources(self, schema, dashboard_instance):
         """
-        Processa o schema e executa todas as queries de datasources.
-
-        Processa tanto componentes estruturados quanto schema JSON livre (legado).
+        Processa o schema JSON do template e executa as queries de datasources.
 
         Args:
-            schema: Schema do template (dict com blocks, etc) - opcional/legado
+            schema: Schema do template (dict com blocks, etc) - opcional
             dashboard_instance: Instância do dashboard com o filtro SQL
 
         Returns:
             dict: Mapeamento {datasource_nome: dados}
         """
-        from .models import TemplateComponent
-
         datasources_data = {}
-        template = dashboard_instance.template
 
-        # 1. Processa componentes estruturados (PRIORITÁRIO)
-        componentes = TemplateComponent.objects.filter(
-            template=template, ativo=True
-        ).select_related("datasource", "component_type")
-
-        for componente in componentes:
-            try:
-                # Aplica o filtro SQL da instância
-                sql_modificado = self._aplicar_filtro_sql(
-                    componente.datasource.sql, dashboard_instance.filtro_sql
-                )
-
-                # Executa a query modificada
-                success, result = self._executar_query_customizada(
-                    componente.datasource.connection, sql_modificado
-                )
-
-                if success:
-                    # Inclui metadados do componente junto com os dados
-                    datasources_data[componente.nome] = {
-                        "type": componente.component_type.nome,
-                        "config": componente.config,
-                        "data": result,
-                    }
-                else:
-                    datasources_data[componente.nome] = {
-                        "type": componente.component_type.nome,
-                        "error": result,
-                        "success": False,
-                    }
-            except Exception as e:
-                datasources_data[componente.nome] = {
-                    "type": (
-                        componente.component_type.nome
-                        if componente.component_type
-                        else "unknown"
-                    ),
-                    "error": str(e),
-                    "success": False,
-                }
-
-        # 2. Processa schema JSON livre (LEGADO - para compatibilidade)
+        # Processa schema JSON livre
         if schema and isinstance(schema, dict):
             blocks = schema.get("blocks", [])
             datasource_names = set()
@@ -133,7 +87,6 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                     if datasource_name and datasource_name not in datasources_data:
                         datasource_names.add(datasource_name)
 
-            # Executa datasources do schema JSON que ainda não foram processados
             for datasource_name in datasource_names:
                 try:
                     from .models import DataSource
@@ -142,12 +95,10 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                         nome=datasource_name, ativo=True
                     )
 
-                    # Aplica o filtro SQL da instância
                     sql_modificado = self._aplicar_filtro_sql(
                         datasource.sql, dashboard_instance.filtro_sql
                     )
 
-                    # Executa a query modificada
                     success, result = self._executar_query_customizada(
                         datasource.connection, sql_modificado
                     )
@@ -254,51 +205,6 @@ class DashboardInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             return False, f"Erro na query SQL: {str(e)}"
         except Exception as e:
             return False, f"Erro ao executar query: {str(e)}"
-
-    @action(detail=True, methods=["get"], url_path="data-legacy")
-    def data_legacy(self, request, pk=None):
-        """
-        Retorna os dados de um dashboard usando sistema LEGADO (TemplateComponent).
-
-        Endpoint: /api/dashboards/{id}/data-legacy/
-
-        LEGADO: Mantido apenas para compatibilidade com dashboards antigos.
-        Use o endpoint /api/dashboards/{id}/data/ para a arquitetura refatorada.
-        """
-        dashboard = self.get_object()
-
-        # Verifica se o usuário tem permissão para acessar este dashboard
-        try:
-            profile = request.user.profile
-            if not profile.pode_acessar_unidade(dashboard.unidade):
-                return Response(
-                    {"error": "Você não tem permissão para acessar este dashboard."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        except:
-            return Response(
-                {"error": "Perfil de usuário não encontrado."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # Processa o schema e executa as datasources
-        schema = dashboard.template.schema
-        datasources_data = self._execute_datasources(schema, dashboard)
-
-        return Response(
-            {
-                "id": dashboard.id,
-                "template_nome": dashboard.template.nome,
-                "unidade": {
-                    "id": dashboard.unidade.id,
-                    "nome": dashboard.unidade.nome,
-                    "codigo": dashboard.unidade.codigo,
-                },
-                "filtro_sql": dashboard.filtro_sql,
-                "schema": schema,
-                "data": datasources_data,
-            }
-        )
 
     @action(detail=True, methods=["get"])
     def data(self, request, pk=None):
