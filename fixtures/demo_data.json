@@ -1,0 +1,1296 @@
+[
+{
+  "model": "dashboards.dashboardtemplate",
+  "pk": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+  "fields": {
+    "nome": "Report Geral (Ano Atual)",
+    "descricao": "",
+    "ativo": true,
+    "schema": null,
+    "filterable_fields": {
+      "temporal": {
+        "field": "sold_at",
+        "label": "Data da Venda"
+      },
+      "categorical": [
+        {
+          "field": "seller_id",
+          "label": "Vendedor"
+        },
+        {
+          "field": "unit_name",
+          "label": "Unidade"
+        },
+        {
+          "field": "seller_name",
+          "label": "Vendedor(a)"
+        }
+      ]
+    },
+    "criado_em": "2026-02-18T20:29:21.511Z",
+    "atualizado_em": "2026-02-18T21:08:08.521Z"
+  }
+},
+{
+  "model": "dashboards.dashboardtemplate",
+  "pk": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+  "fields": {
+    "nome": "Vendas",
+    "descricao": "Público: Gerentes de Unidade e Gerentes Gerais\r\nObjetivo: Acompanhamento do volume e valor de vendas no período",
+    "ativo": true,
+    "schema": null,
+    "filterable_fields": {
+      "temporal": {
+        "field": "sold_at",
+        "label": "Data da Venda"
+      },
+      "categorical": [
+        {
+          "field": "seller_id",
+          "label": "Vendedor"
+        },
+        {
+          "field": "unit_name",
+          "label": "Unidade"
+        },
+        {
+          "field": "seller_name",
+          "label": "Vendedor(a)"
+        }
+      ]
+    },
+    "criado_em": "2026-02-15T03:15:26.757Z",
+    "atualizado_em": "2026-02-18T20:32:08.972Z"
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "45c6710d-2560-4dee-afd5-173a85a8ebe7",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "a59592d8-b27b-4f81-a9e2-c6de6dbe47d1",
+    "filtro_sql": "unit_code = 'CT-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T21:11:22.301Z",
+    "atualizado_em": "2026-02-18T21:17:06.752Z",
+    "usuarios_com_acesso": [
+      [
+        "admin_tecnico"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "51d2483f-481b-4e46-ac3d-88b412c041a9",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "unidade": "501a5e3f-ff69-4606-a8d6-18362996bfa6",
+    "filtro_sql": "sold_at >= '2026-01-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T20:29:37.004Z",
+    "atualizado_em": "2026-02-18T21:04:24.362Z",
+    "usuarios_com_acesso": [
+      [
+        "gerente_geral"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "6ab13c07-6c8a-482c-b09b-e6dae7cf4e37",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "501a5e3f-ff69-4606-a8d6-18362996bfa6",
+    "filtro_sql": "",
+    "ativo": true,
+    "criado_em": "2026-02-18T21:10:22.371Z",
+    "atualizado_em": "2026-02-18T21:10:22.371Z",
+    "usuarios_com_acesso": [
+      [
+        "gerente_geral"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "a5299e33-14f5-43b4-96d0-4a6af34d2732",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "b9b282c2-c3a7-460b-acf3-f6380f8d2023",
+    "filtro_sql": "unit_code = 'SP-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T02:48:33.656Z",
+    "atualizado_em": "2026-02-18T20:12:29.682Z",
+    "usuarios_com_acesso": [
+      [
+        "gerente_geral"
+      ],
+      [
+        "gerente_unidade_sp"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "b94e7d49-0b18-4b68-8bb9-da2a6c3d9eca",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "677e9814-71b2-4e57-b936-f9f5ac7abcae",
+    "filtro_sql": "unit_code = 'BH-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T21:11:12.810Z",
+    "atualizado_em": "2026-02-18T21:16:08.683Z",
+    "usuarios_com_acesso": [
+      [
+        "admin_tecnico"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "c29c3607-6270-4161-b7b9-c5fc52053bb6",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "64f9614b-9ea6-4398-b915-547458a50f71",
+    "filtro_sql": "unit_code = 'POA-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T21:11:32.997Z",
+    "atualizado_em": "2026-02-18T21:17:14.459Z",
+    "usuarios_com_acesso": [
+      [
+        "admin_tecnico"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.dashboardinstance",
+  "pk": "e7398a9e-cd43-429c-9bd4-3ffd743c5e08",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "unidade": "fa94ce39-bb88-4eca-8e1f-a98f4bf5ad17",
+    "filtro_sql": "unit_code = 'RJ-01'",
+    "ativo": true,
+    "criado_em": "2026-02-18T21:11:46.485Z",
+    "atualizado_em": "2026-02-18T21:17:19.976Z",
+    "usuarios_com_acesso": [
+      [
+        "admin_tecnico"
+      ]
+    ]
+  }
+},
+{
+  "model": "dashboards.connection",
+  "pk": "02405011-9fa4-4dfe-ad98-792eb30e71ee",
+  "fields": {
+    "nome": "pg_mos_tattoo",
+    "descricao": "Banco dados de vendas da MOS Tattoo Supply",
+    "host": "172.17.0.1",
+    "porta": 5433,
+    "database": "tattoo_sales_db",
+    "usuario": "tattoo_user",
+    "senha": "tattoo_password_2026",
+    "ativo": true,
+    "criado_em": "2026-02-15T00:57:25.461Z",
+    "atualizado_em": "2026-02-15T01:02:35.189Z"
+  }
+},
+{
+  "model": "dashboards.datasource",
+  "pk": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+  "fields": {
+    "nome": "View Sales Complete",
+    "descricao": "",
+    "connection": "02405011-9fa4-4dfe-ad98-792eb30e71ee",
+    "sql": "select\r\n\t*\r\nfrom\r\n\tv_sales_complete",
+    "columns_metadata": [
+      {
+        "name": "id",
+        "nullable": true,
+        "database_type": "int4",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "sold_at",
+        "nullable": true,
+        "database_type": "timestamp",
+        "semantic_type": "datetime",
+        "allowed_aggregations": [
+          "count",
+          "min",
+          "max"
+        ],
+        "allowed_granularities": [
+          "hour",
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ]
+      },
+      {
+        "name": "delivered_at",
+        "nullable": true,
+        "database_type": "timestamp",
+        "semantic_type": "datetime",
+        "allowed_aggregations": [
+          "count",
+          "min",
+          "max"
+        ],
+        "allowed_granularities": [
+          "hour",
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ]
+      },
+      {
+        "name": "unit_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "unit_code",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "seller_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "total_value",
+        "nullable": true,
+        "database_type": "numeric",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "expected_delivery_days",
+        "nullable": true,
+        "database_type": "int4",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "actual_delivery_days",
+        "nullable": true,
+        "database_type": "numeric",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "delivered_on_time",
+        "nullable": true,
+        "database_type": "bool",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "canceled",
+        "nullable": true,
+        "database_type": "bool",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      }
+    ],
+    "detected_columns": [
+      "id",
+      "sold_at",
+      "delivered_at",
+      "unit_name",
+      "unit_code",
+      "seller_name",
+      "total_value",
+      "expected_delivery_days",
+      "actual_delivery_days",
+      "delivered_on_time",
+      "canceled"
+    ],
+    "last_validation_at": "2026-02-18T02:44:40.200Z",
+    "last_validation_error": "",
+    "metric_date_column": "",
+    "metric_value_column": "",
+    "series_key_column": "",
+    "unit_id_column": "",
+    "contract_validated": false,
+    "ativo": true,
+    "criado_em": "2026-02-16T16:14:00.727Z",
+    "atualizado_em": "2026-02-18T02:45:15.852Z"
+  }
+},
+{
+  "model": "dashboards.datasource",
+  "pk": "c1cde3d0-a6a1-459e-9959-ffcb8b04fc0a",
+  "fields": {
+    "nome": "Vendas Produtos",
+    "descricao": "",
+    "connection": "02405011-9fa4-4dfe-ad98-792eb30e71ee",
+    "sql": "select * from v_sale_items_expanded_detail",
+    "columns_metadata": [
+      {
+        "name": "item_id",
+        "nullable": true,
+        "database_type": "int4",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "sale_id",
+        "nullable": true,
+        "database_type": "int4",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "sold_at",
+        "nullable": true,
+        "database_type": "timestamp",
+        "semantic_type": "datetime",
+        "allowed_aggregations": [
+          "count",
+          "min",
+          "max"
+        ],
+        "allowed_granularities": [
+          "hour",
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ]
+      },
+      {
+        "name": "unit_code",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "unit_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "seller_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "product_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "product_category",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "quantity",
+        "nullable": true,
+        "database_type": "int4",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "unit_price",
+        "nullable": true,
+        "database_type": "numeric",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "item_total",
+        "nullable": true,
+        "database_type": "numeric",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "canceled",
+        "nullable": true,
+        "database_type": "bool",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      }
+    ],
+    "detected_columns": [
+      "item_id",
+      "sale_id",
+      "sold_at",
+      "unit_code",
+      "unit_name",
+      "seller_name",
+      "product_name",
+      "product_category",
+      "quantity",
+      "unit_price",
+      "item_total",
+      "canceled"
+    ],
+    "last_validation_at": "2026-02-18T19:59:22.596Z",
+    "last_validation_error": "",
+    "metric_date_column": "",
+    "metric_value_column": "",
+    "series_key_column": "",
+    "unit_id_column": "",
+    "contract_validated": false,
+    "ativo": true,
+    "criado_em": "2026-02-18T19:55:16.283Z",
+    "atualizado_em": "2026-02-18T19:59:22.597Z"
+  }
+},
+{
+  "model": "dashboards.datasource",
+  "pk": "dcd7cfd3-51e9-49d9-a9a9-d88f77357bf4",
+  "fields": {
+    "nome": "Taxa Cancelamento",
+    "descricao": "",
+    "connection": "02405011-9fa4-4dfe-ad98-792eb30e71ee",
+    "sql": "SELECT \r\n    s.sold_at::date AS sold_at,\r\n    u.code AS unit_code,\r\n    u.name AS unit_name,\r\n    sel.name AS seller_name,\r\n    COUNT(*) AS total_vendas,\r\n    COUNT(CASE WHEN s.canceled = true THEN 1 END) AS total_canceladas,\r\n    ROUND(\r\n        (COUNT(CASE WHEN s.canceled = true THEN 1 END)::numeric / NULLIF(COUNT(*), 0)) * 100, \r\n        2\r\n    ) AS taxa_cancelamento_percentual\r\nFROM public.sales s\r\nJOIN public.units u ON s.unit_id = u.id\r\nJOIN public.sellers sel ON s.seller_id = sel.id\r\nGROUP BY 1, 2, 3, 4\r\nORDER BY 1 DESC, 2 ASC, 4 ASC",
+    "columns_metadata": [
+      {
+        "name": "sold_at",
+        "nullable": true,
+        "database_type": "date",
+        "semantic_type": "datetime",
+        "allowed_aggregations": [
+          "count",
+          "min",
+          "max"
+        ],
+        "allowed_granularities": [
+          "hour",
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ]
+      },
+      {
+        "name": "unit_code",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "unit_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "seller_name",
+        "nullable": true,
+        "database_type": "varchar",
+        "semantic_type": "dimension",
+        "allowed_aggregations": [
+          "count",
+          "count_distinct"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "total_vendas",
+        "nullable": true,
+        "database_type": "int8",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "total_canceladas",
+        "nullable": true,
+        "database_type": "int8",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      },
+      {
+        "name": "taxa_cancelamento_percentual",
+        "nullable": true,
+        "database_type": "numeric",
+        "semantic_type": "measure",
+        "allowed_aggregations": [
+          "sum",
+          "avg",
+          "count",
+          "count_distinct",
+          "min",
+          "max",
+          "median"
+        ],
+        "allowed_granularities": []
+      }
+    ],
+    "detected_columns": [
+      "sold_at",
+      "unit_code",
+      "unit_name",
+      "seller_name",
+      "total_vendas",
+      "total_canceladas",
+      "taxa_cancelamento_percentual"
+    ],
+    "last_validation_at": "2026-02-18T19:43:56.192Z",
+    "last_validation_error": "",
+    "metric_date_column": "",
+    "metric_value_column": "",
+    "series_key_column": "",
+    "unit_id_column": "",
+    "contract_validated": false,
+    "ativo": true,
+    "criado_em": "2026-02-18T19:38:26.056Z",
+    "atualizado_em": "2026-02-18T19:43:56.193Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "1bf86fa5-da89-4e9c-9d15-444f5d43b08a",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "dcd7cfd3-51e9-49d9-a9a9-d88f77357bf4",
+    "title": "Taxa de cancelamento",
+    "order": 3,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "taxa_cancelamento_percentual",
+        "label": "sum de taxa_cancelamento_percentual",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "%",
+    "metric_decimal_places": 2,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T19:35:02.284Z",
+    "atualizado_em": "2026-02-18T19:49:33.327Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "269eb89c-66ff-4d1e-bf61-85416c820b74",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Total de vendas no período",
+    "order": 1,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "Valor Total de vendas no período",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "R$",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T02:44:11.654Z",
+    "atualizado_em": "2026-02-18T04:05:35.823Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "2fefaa90-d763-4082-ae59-67393837a8c7",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Evolução de vendas",
+    "order": 4,
+    "chart_type": "line",
+    "x_axis_field": "sold_at",
+    "x_axis_granularity": "month",
+    "series_field": "unit_name",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "Valor total de vendas",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 8,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "canceled = false",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T03:46:56.820Z",
+    "atualizado_em": "2026-02-18T19:50:17.291Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "327c2634-34c7-45f7-be91-1bb1a99fdebe",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "dcd7cfd3-51e9-49d9-a9a9-d88f77357bf4",
+    "title": "Taxa de cancelamento por unidade",
+    "order": 3,
+    "chart_type": "table",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "unit_name",
+    "series_label": "Unidade",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_vendas",
+        "label": "Total de Vendas",
+        "aggregation": "sum"
+      },
+      {
+        "axis": "y1",
+        "field": "taxa_cancelamento_percentual",
+        "label": "Taxa de cancelamento média",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:40:36.129Z",
+    "atualizado_em": "2026-02-18T21:07:51.734Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "440ed69b-8112-4dc3-8259-6c334956527c",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Atrasos por Unidade",
+    "order": 4,
+    "chart_type": "line",
+    "x_axis_field": "sold_at",
+    "x_axis_granularity": "month",
+    "series_field": "unit_name",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "id",
+        "label": "Qtd de Atrasos na Entrega",
+        "aggregation": "count_distinct"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "expected_delivery_days < actual_delivery_days",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:56:23.738Z",
+    "atualizado_em": "2026-02-18T21:08:08.528Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "622af33d-0135-44e9-adf3-f47e0658f887",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "c1cde3d0-a6a1-459e-9959-ffcb8b04fc0a",
+    "title": "Produtos mais vendidos",
+    "order": 5,
+    "chart_type": "barh",
+    "x_axis_field": "product_name",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "quantity",
+        "label": "Qtd de Un. Vendidas",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "metric_value_1 DESC",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:51:51.803Z",
+    "atualizado_em": "2026-02-18T21:08:08.525Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "75b14854-46bc-4d29-9d00-1ed84c7b0ce1",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Performance por vendedor",
+    "order": 5,
+    "chart_type": "table",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "seller_name",
+    "series_label": "Vendedor (a)",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "Vendas Total R$",
+        "aggregation": "sum"
+      },
+      {
+        "axis": "y2",
+        "field": "total_value",
+        "label": "Ticket Médio R$",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T15:33:55.390Z",
+    "atualizado_em": "2026-02-18T20:32:08.973Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "b2010c18-5ed2-46db-8762-894ff8ba27ef",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Ticket Médio",
+    "order": 2,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "avg de total_value",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "canceled = false",
+    "block_order_by": "",
+    "metric_prefix": "R$",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T02:51:16.181Z",
+    "atualizado_em": "2026-02-18T03:58:00.396Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "b3e42231-ba9a-4422-b09b-6564f67ad5f9",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Prazo médio de entrega",
+    "order": 0,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "expected_delivery_days",
+        "label": "sum de expected_delivery_days",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "d",
+    "metric_decimal_places": 1,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T19:46:15.329Z",
+    "atualizado_em": "2026-02-18T19:49:14.074Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "d3ded155-2734-444d-8c72-7d822daab591",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "c1cde3d0-a6a1-459e-9959-ffcb8b04fc0a",
+    "title": "Categorias mais vendidas",
+    "order": 7,
+    "chart_type": "line",
+    "x_axis_field": "sold_at",
+    "x_axis_granularity": "month",
+    "series_field": "product_category",
+    "series_label": "Categoria",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "unit_price",
+        "label": "Valor total de vendas",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:14:08.727Z",
+    "atualizado_em": "2026-02-18T20:19:11.476Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "d4e1c091-a302-44ca-b635-dd14209df16e",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Ticket Médio",
+    "order": 1,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "avg de total_value",
+        "aggregation": "avg"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "canceled = false",
+    "block_order_by": "",
+    "metric_prefix": "R$",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T21:01:52.873Z",
+    "atualizado_em": "2026-02-18T21:03:01.286Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "d79baab5-994d-4734-9138-d7233ab5faad",
+  "fields": {
+    "template": "bc7d96ce-8a5e-4a99-b7ee-2793c4d33876",
+    "datasource": "c1cde3d0-a6a1-459e-9959-ffcb8b04fc0a",
+    "title": "Produtos mais vendidos",
+    "order": 6,
+    "chart_type": "barh",
+    "x_axis_field": "product_name",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "quantity",
+        "label": "Qtd de Un. Vendidas",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 4,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "metric_value_1 DESC",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T19:29:50.568Z",
+    "atualizado_em": "2026-02-18T20:52:38.022Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "e9b30c5b-9b90-40c1-af88-a9e22dab5f39",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Faturamento Global",
+    "order": 0,
+    "chart_type": "metric",
+    "x_axis_field": "",
+    "x_axis_granularity": "",
+    "series_field": "",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "Valor Total de Vendas",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 2,
+    "row_span": 1,
+    "config": {},
+    "block_filter": "sold_at >= '2026-01-01' and canceled = false",
+    "block_order_by": "",
+    "metric_prefix": "R$",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:29:21.512Z",
+    "atualizado_em": "2026-02-18T21:03:16.920Z"
+  }
+},
+{
+  "model": "dashboards.dashboardblock",
+  "pk": "f5eebf3b-beb1-46f9-8d79-870fef83b712",
+  "fields": {
+    "template": "88a3a713-bce3-4686-ad24-22d2bdcc53d7",
+    "datasource": "5382d345-1e2f-4537-a4c8-59c64abecd3b",
+    "title": "Faturamento por Unidade",
+    "order": 2,
+    "chart_type": "bar",
+    "x_axis_field": "sold_at",
+    "x_axis_granularity": "month",
+    "series_field": "unit_name",
+    "series_label": "",
+    "y_axis_aggregations": [
+      {
+        "axis": "y1",
+        "field": "total_value",
+        "label": "Faturamento",
+        "aggregation": "sum"
+      }
+    ],
+    "col_span": 10,
+    "row_span": 2,
+    "config": {},
+    "block_filter": "",
+    "block_order_by": "",
+    "metric_prefix": "",
+    "metric_suffix": "",
+    "metric_decimal_places": 0,
+    "ativo": true,
+    "is_draft": true,
+    "criado_em": "2026-02-18T20:44:07.824Z",
+    "atualizado_em": "2026-02-18T21:03:57.633Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "501a5e3f-ff69-4606-a8d6-18362996bfa6",
+  "fields": {
+    "nome": "Geral",
+    "codigo": "GERAL",
+    "ativa": true,
+    "criado_em": "2026-02-18T20:12:14.945Z",
+    "atualizado_em": "2026-02-18T20:12:14.945Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "64f9614b-9ea6-4398-b915-547458a50f71",
+  "fields": {
+    "nome": "Porto Alegre",
+    "codigo": "POA-01",
+    "ativa": true,
+    "criado_em": "2026-02-14T18:42:06.843Z",
+    "atualizado_em": "2026-02-14T18:42:06.843Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "677e9814-71b2-4e57-b936-f9f5ac7abcae",
+  "fields": {
+    "nome": "Belo Horizonte",
+    "codigo": "BH-01",
+    "ativa": true,
+    "criado_em": "2026-02-14T18:42:06.837Z",
+    "atualizado_em": "2026-02-14T18:42:06.837Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "a59592d8-b27b-4f81-a9e2-c6de6dbe47d1",
+  "fields": {
+    "nome": "Curitiba",
+    "codigo": "CT-01",
+    "ativa": true,
+    "criado_em": "2026-02-14T18:42:06.841Z",
+    "atualizado_em": "2026-02-14T18:42:06.841Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "b9b282c2-c3a7-460b-acf3-f6380f8d2023",
+  "fields": {
+    "nome": "São Paulo",
+    "codigo": "SP-01",
+    "ativa": true,
+    "criado_em": "2026-02-14T18:42:06.831Z",
+    "atualizado_em": "2026-02-14T18:42:06.831Z"
+  }
+},
+{
+  "model": "core.unidade",
+  "pk": "fa94ce39-bb88-4eca-8e1f-a98f4bf5ad17",
+  "fields": {
+    "nome": "Rio de Janeiro",
+    "codigo": "RJ-01",
+    "ativa": true,
+    "criado_em": "2026-02-14T18:42:06.834Z",
+    "atualizado_em": "2026-02-14T18:42:06.834Z"
+  }
+}
+]
