@@ -32,7 +32,7 @@ Este repositório disponibiliza **duas versões** do ambiente:
 | **Clean** | Apenas os models e a estrutura da engine, sem dados. Ideal para adaptar a engine ao seu próprio domínio. |
 | **Demo** | Ambiente pré-populado com dados fictícios de uma rede de estúdios (mock temático), pronto para exploração visual dos dashboards. |
 
-> A temática da Demo (dados de uma rede de estúdios de tatuagem) foi escolhida exclusivamente para viabilizar uma exploração rica de gráficos e métricas variadas. Ela não representa o domínio de aplicação da engine. Para o uso completo da demo, é necessario a configuração do [frontend](https://github.com/Moscarde/mos_tattoo_frontend) e do [banco de dados](https://github.com/Moscarde/mos_tattoo_database).
+> A temática da Demo (dados de uma rede de estúdios de tatuagem) foi escolhida exclusivamente para viabilizar uma exploração rica de gráficos e métricas variadas. Ela não representa o domínio de aplicação da engine. Para o uso completo da demo, é necessario a configuração do [frontend](https://github.com/Moscarde/Template-Based-BI-Distribution-Frontend/) e do [banco de dados](https://github.com/Moscarde/Template-Based-BI-Distribution-Database/).
 
 ---
 
